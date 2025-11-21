@@ -4,16 +4,14 @@ from services.obra_service import (
     criar_obra,
     listar_obras,
     atualizar_obra,
-    deletar_obra
+    deletar_obra,
+    listar_obras_por_usuario # <--- Importante: Importando a nova função
 )
-
-# Se precisar validar admin futuramente, importe:
-# from services.user_service import get_user_by_token
 
 obras_bp = Blueprint("obras", __name__)
 
 # =====================================================
-# LISTAR (GET)
+# LISTAR (GET) - COM FILTRO DE USUÁRIO
 # =====================================================
 @obras_bp.route("/obras", methods=["GET", "OPTIONS"])
 @cross_origin()
@@ -21,8 +19,16 @@ def listar():
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
 
-    # Chama o serviço (que você já criou em obra_service.py)
-    obras = listar_obras()
+    # Verifica se veio um user_id na URL (ex: /obras?user_id=1)
+    user_id = request.args.get("user_id")
+
+    if user_id:
+        # Se tem ID, busca filtrado (apenas obras desse usuário)
+        obras = listar_obras_por_usuario(user_id)
+    else:
+        # Se não tem ID, busca tudo (comportamento padrão/admin)
+        obras = listar_obras()
+        
     return jsonify(obras), 200
 
 
@@ -37,15 +43,12 @@ def criar():
 
     data = request.get_json()
     nome = data.get("nome")
-    quem_paga = data.get("quem_paga")  # <--- Captura o novo campo
-    
+    quem_paga = data.get("quem_paga")
     user_id = data.get("user_id") 
 
-    # Validação: Agora exige nome E quem_paga
     if not nome or not quem_paga:
         return jsonify({"error": "Nome e o campo 'Quem Paga' são obrigatórios"}), 400
 
-    # Passa o novo argumento para o serviço
     obra, error = criar_obra(nome, user_id, quem_paga)
     
     if error:
@@ -54,8 +57,10 @@ def criar():
     return jsonify(obra), 201
 
 
+# ... (Mantenha os imports e as rotas GET e POST iguais)
+
 # =====================================================
-# ATUALIZAR (PUT) - Rota que estava dando erro CORS
+# ATUALIZAR (PUT)
 # =====================================================
 @obras_bp.route("/obras/<int:obra_id>", methods=["PUT", "OPTIONS"])
 @cross_origin()
@@ -65,20 +70,21 @@ def atualizar(obra_id):
 
     data = request.get_json()
     novo_nome = data.get("nome")
+    novo_quem_paga = data.get("quem_paga")
 
-    if not novo_nome:
-        return jsonify({"error": "Nome é obrigatório"}), 400
+    if not novo_nome or not novo_quem_paga:
+        return jsonify({"error": "Campos obrigatórios faltando"}), 400
 
-    obra_atualizada, error = atualizar_obra(obra_id, novo_nome)
+    obra, error = atualizar_obra(obra_id, novo_nome, novo_quem_paga)
 
     if error:
         return jsonify({"error": error}), 404
 
-    return jsonify(obra_atualizada), 200
+    return jsonify(obra), 200
 
-
+# === ADICIONE ESTA ROTA NO FINAL ===
 # =====================================================
-# DELETAR (DELETE) - Rota que estava dando erro CORS
+# DELETAR (DELETE)
 # =====================================================
 @obras_bp.route("/obras/<int:obra_id>", methods=["DELETE", "OPTIONS"])
 @cross_origin()
@@ -86,19 +92,9 @@ def deletar(obra_id):
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
 
-    # O service retorna None se sucesso, ou string se erro (mas sua implementação retornava False/None)
-    # Vamos ajustar baseado no seu service:
-    # seu service retorna: return False, "Erro" OU return True, None (assumindo ajuste no service)
-    
-    # Olhando seu service: ele retorna (False, "msg") ou (None, None) implicito.
-    # Vamos assumir que se não retornar erro, deu certo.
-    
-    err_bool_or_none, msg = deletar_obra(obra_id)
-    
-    # Nota: No seu service deletar_obra, se der certo ele retorna nada (None).
-    # Se der erro, retorna False, "msg". Ajuste conforme necessidade.
-    
-    if msg: 
-        return jsonify({"error": msg}), 404
+    resultado, error = deletar_obra(obra_id)
 
-    return jsonify({"message": "Obra deletada com sucesso"}), 200
+    if error:
+        return jsonify({"error": error}), 400
+
+    return jsonify(resultado), 200
