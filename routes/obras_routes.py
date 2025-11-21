@@ -5,13 +5,14 @@ from services.obra_service import (
     listar_obras,
     atualizar_obra,
     deletar_obra,
-    listar_obras_por_usuario # <--- Importante: Importando a nova função
+    listar_obras_por_usuario
 )
 
 obras_bp = Blueprint("obras", __name__)
 
 # =====================================================
-# LISTAR (GET) - COM FILTRO DE USUÁRIO
+# LISTAR (GET)
+# Aceita ?user_id=1 para filtrar ou traz tudo se for admin/sem ID
 # =====================================================
 @obras_bp.route("/obras", methods=["GET", "OPTIONS"])
 @cross_origin()
@@ -19,17 +20,19 @@ def listar():
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
 
-    # Verifica se veio um user_id na URL (ex: /obras?user_id=1)
     user_id = request.args.get("user_id")
 
-    if user_id:
-        # Se tem ID, busca filtrado (apenas obras desse usuário)
-        obras = listar_obras_por_usuario(user_id)
-    else:
-        # Se não tem ID, busca tudo (comportamento padrão/admin)
-        obras = listar_obras()
+    try:
+        if user_id:
+            # Busca filtrada (Usuário comum)
+            obras = listar_obras_por_usuario(user_id)
+        else:
+            # Busca completa (Admin ou padrão)
+            obras = listar_obras()
         
-    return jsonify(obras), 200
+        return jsonify(obras), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao listar obras: {str(e)}"}), 500
 
 
 # =====================================================
@@ -57,8 +60,6 @@ def criar():
     return jsonify(obra), 201
 
 
-# ... (Mantenha os imports e as rotas GET e POST iguais)
-
 # =====================================================
 # ATUALIZAR (PUT)
 # =====================================================
@@ -82,7 +83,7 @@ def atualizar(obra_id):
 
     return jsonify(obra), 200
 
-# === ADICIONE ESTA ROTA NO FINAL ===
+
 # =====================================================
 # DELETAR (DELETE)
 # =====================================================

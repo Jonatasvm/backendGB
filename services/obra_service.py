@@ -77,49 +77,45 @@ def deletar_obra(obra_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 1. Verifica se existe
-    cursor.execute("SELECT id FROM obras WHERE id = %s", (obra_id,))
-    if not cursor.fetchone():
-        cursor.close()
-        conn.close()
-        return None, "Obra não encontrada"
-
     try:
-        # 2. Remove vínculos na tabela users_obras (Para evitar erro de Foreign Key)
-        cursor.execute("DELETE FROM users_obras WHERE obra_id = %s", (obra_id,))
-        
-        # Opcional: Se você quiser apagar os formulários dessa obra também, descomente a linha abaixo:
-        # cursor.execute("DELETE FROM formulario WHERE obra = %s", (obra_id,))
+        # 1. Verifica se a obra existe
+        cursor.execute("SELECT id FROM obras WHERE id = %s", (obra_id,))
+        if not cursor.fetchone():
+            return None, "Obra não encontrada"
 
-        # 3. Deleta a Obra
+        # 2. Remove vínculos com usuários (users_obras) para evitar erro de chave estrangeira
+        cursor.execute("DELETE FROM users_obras WHERE obra_id = %s", (obra_id,))
+
+        # 3. Deleta a obra
         cursor.execute("DELETE FROM obras WHERE id = %s", (obra_id,))
         conn.commit()
+
+        return {"message": "Obra deletada com sucesso"}, None
     except Exception as e:
-        conn.rollback()
+        return None, str(e)
+    finally:
         cursor.close()
         conn.close()
-        return None, f"Erro ao excluir obra (pode haver registros vinculados): {str(e)}"
-
-    cursor.close()
-    conn.close()
-    return {"message": "Obra excluída com sucesso"}, None
 
 # --- NOVA FUNÇÃO NECESSÁRIA ---
 def listar_obras_por_usuario(user_id):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # JOIN para pegar apenas as obras vinculadas ao usuário
-    query = """
-        SELECT o.id, o.nome, o.quem_paga 
-        FROM obras o
-        INNER JOIN users_obras uo ON o.id = uo.obra_id
-        WHERE uo.user_id = %s
-    """
-    
-    cursor.execute(query, (user_id,))
-    obras = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    return obras
+    try:
+        # Este SQL faz a mágica: une a tabela de obras com a tabela de permissões
+        query = """
+            SELECT o.id, o.nome, o.quem_paga
+            FROM obras o
+            JOIN users_obras uo ON o.id = uo.obra_id
+            WHERE uo.user_id = %s
+        """
+        cursor.execute(query, (user_id,))
+        obras = cursor.fetchall()
+        return obras
+    except Exception as e:
+        print(f"Erro ao listar obras por usuário: {e}")
+        return []
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
