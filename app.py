@@ -24,7 +24,7 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
 
-    # RODE ASSIM PARA VELOCIDADE MÁXIMA:
+    # RODE ASSIM PARA VELOCIDADE MÁXIMA:f
     app.run(
         host="127.0.0.1",   # Muito mais rápido que 0.0.0.0 no Windows
         port=5631,          # Porta leve, não exige privilégios
