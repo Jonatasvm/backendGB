@@ -1,4 +1,5 @@
 from db import get_connection
+from flask import jsonify # Adicionado para garantir que jsonify está disponível se necessário, embora não seja estritamente necessário aqui.
 
 def criar_obra(nome, user_id, quem_paga):
     conn = get_connection()
@@ -73,6 +74,20 @@ def atualizar_obra(obra_id, novo_nome, novo_quem_paga):
     return obra_atualizada, None
 
 # === ADICIONE ESTA FUNÇÃO NO FINAL ===
+def buscar_obra_por_id(obra_id):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id, nome, quem_paga FROM obras WHERE id = %s", (obra_id,))
+        obra = cursor.fetchone()
+        return obra
+    except Exception as e:
+        print(f"Erro ao buscar obra por ID: {e}")
+        return None
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
 def deletar_obra(obra_id):
     conn = get_connection()
     cursor = conn.cursor()

@@ -5,7 +5,8 @@ from services.obra_service import (
     listar_obras,
     atualizar_obra,
     deletar_obra,
-    listar_obras_por_usuario
+    listar_obras_por_usuario,
+    buscar_obra_por_id
 )
 
 obras_bp = Blueprint("obras", __name__)
@@ -59,6 +60,23 @@ def criar():
 
     return jsonify(obra), 201
 
+
+# =====================================================
+# BUSCAR OBRA POR ID (GET)
+# =====================================================
+@obras_bp.route("/obras/<int:obra_id>", methods=["GET", "OPTIONS"])
+@cross_origin()
+def buscar_obra(obra_id):
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    try:
+        obra = buscar_obra_por_id(obra_id)
+        if obra:
+            return jsonify(obra), 200
+        return jsonify({"error": "Obra não encontrada"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar obra: {str(e)}"}), 500
 
 # =====================================================
 # ATUALIZAR (PUT)

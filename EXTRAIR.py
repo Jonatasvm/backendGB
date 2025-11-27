@@ -65,7 +65,7 @@ def imprimir_seguro(texto):
 # EXECUÇÃO PRINCIPAL
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    pasta = r"C:\Users\Borracharia\Documents\gb1\backendGB-main"
+    pasta = r"C:\Users\Borracharia\Downloads\zip\backendGB"
 
     if not os.path.isdir(pasta):
         print("Caminho inválido. Verifique o diretório informado.")

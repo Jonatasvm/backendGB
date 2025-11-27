@@ -5,6 +5,46 @@ from db import get_connection
 formulario_bp = Blueprint("formulario", __name__)
 
 # ===========================
+# BUSCAR TITULARES PARA AUTOCOMPLETE (GET)
+# ===========================
+@formulario_bp.route("/formulario/titulares/search", methods=["GET", "OPTIONS"])
+@cross_origin()
+def buscar_titulares():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    query = request.args.get("q", "")
+    if not query:
+        return jsonify([]), 200
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Consulta para buscar pares distintos de titular e cpf_cnpj que começam com a query
+    # Usamos GROUP BY para obter o efeito de DISTINCT em ambas as colunas
+    sql_query = """
+        SELECT titular, cpf_cnpj 
+        FROM formulario 
+        WHERE titular LIKE %s 
+        GROUP BY titular, cpf_cnpj
+        LIMIT 10
+    """
+    
+    # Adicionamos '%' ao final da query para buscar por "começa com"
+    search_term = query + "%"
+    
+    try:
+        cursor.execute(sql_query, (search_term,))
+        titulares = cursor.fetchall()
+        return jsonify(titulares), 200
+    except Exception as e:
+        print(f"Erro ao buscar titulares: {e}")
+        return jsonify({"error": "Erro interno do servidor"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# ===========================
 # LISTAR TODOS OS FORMULÁRIOS (GET)
 # ===========================
 @formulario_bp.route("/formulario", methods=["GET", "OPTIONS"])
