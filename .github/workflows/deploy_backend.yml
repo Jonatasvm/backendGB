@@ -27,3 +27,5 @@ jobs:
           # Comandos pós-deploy (ex: reinicie o serviço Python/Gunicorn/PM2)
           # Exemplo: sudo systemctl restart backendGB_service
           echo "Deploy do backendGB concluído!"
+	  pm2 restart all
+	  echo "PM2 reiniciado"
