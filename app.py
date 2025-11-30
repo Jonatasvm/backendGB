@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
     # RODE ASSIM PARA VELOCIDADE MÁXIMA:f
     app.run(
-        host="127.0.0.1",   # Muito mais rápido que 0.0.0.0 no Windows
+        host="0.0.0.0",   # Muito mais rápido que 0.0.0.0 no Windows
         port=5631,          # Porta leve, não exige privilégios
         debug=False,        # Evita duplicação de processo
         use_reloader=False  # Evita lentidão do watchdog
