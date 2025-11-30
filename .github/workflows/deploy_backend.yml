@@ -1,0 +1,29 @@
+name: Deploy BackendGB to Hetzner VPS
+
+on:
+  push:
+    branches:
+      - main # O branch que você usa para deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          echo "Conectado à VPS. Iniciando deploy do backendGB..."
+          # Mude para o diretório de destino do backendGB
+          cd /home/gerenciaGR/backendGB
+          # Puxa as últimas alterações do GitHub
+          git pull origin main
+          # Comandos pós-deploy (ex: reinicie o serviço Python/Gunicorn/PM2)
+          # Exemplo: sudo systemctl restart backendGB_service
+          echo "Deploy do backendGB concluído!"
