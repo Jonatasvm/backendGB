@@ -14,41 +14,32 @@ def buscar_titulares():
         return jsonify({"status": "OK"}), 200
 
     query = request.args.get("q", "")
+    if not query:
+        return jsonify([]), 200
+
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # Base da consulta para buscar pares distintos de titular e cpf_cnpj
+    # Consulta para buscar pares distintos de titular e cpf_cnpj que começam com a query
+    # Usamos GROUP BY para obter o efeito de DISTINCT em ambas as colunas
     sql_query = """
-        SELECT DISTINCT titular, cpf_cnpj 
-        FROM formulario
+        SELECT titular, cpf_cnpj 
+        FROM formulario 
+        WHERE titular LIKE %s 
+        GROUP BY titular, cpf_cnpj
+        LIMIT 10
     """
     
-    # 1. Se houver query (para autocomplete), aplica a condição LIKE e o LIMIT
-    if query:
-        sql_query += " WHERE titular LIKE %s "
-        sql_query += " GROUP BY titular, cpf_cnpj LIMIT 10 "
-        search_term = query + "%"
-        params = (search_term,)
-    # 2. Se a query estiver vazia (para filtro), traz TODOS os distintos
-    else:
-        sql_query += " GROUP BY titular, cpf_cnpj ORDER BY titular ASC "
-        params = () # Nenhum parâmetro
+    # Adicionamos '%' ao final da query para buscar por "começa com"
+    search_term = query + "%"
     
     try:
-        cursor.execute(sql_query, params)
+        cursor.execute(sql_query, (search_term,))
         titulares = cursor.fetchall()
-        
-        # Formatando para o filtro: transforma o nome em "ID" temporário.
-        # O frontend tratará o Titular como uma string de nome/cpf_cnpj
-        titulares_formatados = [{
-            "id": f"{t['titular']} - {t['cpf_cnpj']}", # Usamos a string completa como ID
-            "nome": t['titular']
-        } for t in titulares]
-        
-        return jsonify(titulares_formatados), 200
+        return jsonify(titulares), 200
     except Exception as e:
         print(f"Erro ao buscar titulares: {e}")
-        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+        return jsonify({"error": "Erro interno do servidor"}), 500
     finally:
         cursor.close()
         conn.close()
