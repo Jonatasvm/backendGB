@@ -144,6 +144,9 @@ def atualizar_formulario(form_id):
 
     return jsonify({"message": "Formulário atualizado"}), 200
 
+
+
+
 # ===========================
 # DELETAR FORMULÁRIO (DELETE)
 # ===========================
@@ -161,3 +164,45 @@ def deletar_formulario(form_id):
     conn.close()
 
     return jsonify({"message": "Formulário deletado"}), 200
+
+
+# nova rota 
+# ===========================
+@formulario_bp.route("/titulares/list", methods=["GET", "OPTIONS"])
+@cross_origin()
+def listar_titulares():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Busca todos os titulares distintos da tabela 'formulario'
+    # NOTA: Como você não tem um ID para o Titular, vamos usar um hash ou o nome como "ID".
+    # Pela sua versão anterior, o campo 'titular' é o que você usa para comparação.
+    sql_query = """
+        SELECT DISTINCT titular 
+        FROM formulario
+        WHERE titular IS NOT NULL AND titular != ''
+        ORDER BY titular ASC
+    """
+    
+    try:
+        cursor.execute(sql_query)
+        registros = cursor.fetchall()
+        
+        # Como o valor do filtro será o NOME (string) do titular,
+        # vamos formatar a resposta para { id: NOME, nome: NOME }
+        # Assim, o <select> do React usa o nome como ID.
+        titulares_formatados = [{
+            "id": t['titular'], 
+            "nome": t['titular']
+        } for t in registros]
+        
+        return jsonify(titulares_formatados), 200
+    except Exception as e:
+        print(f"Erro ao buscar lista de titulares: {e}")
+        return jsonify({"error": "Erro interno ao buscar titulares"}), 500
+    finally:
+        cursor.close()
+        conn.close()
