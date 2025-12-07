@@ -74,7 +74,7 @@ def criar_formulario():
 
     # --- FORÇAR VALORES AQUI (Backend) ---
     # Se você quer que sempre grave 'N' (ou '0', ou False) ao criar:
-    valor_lancado = 'N'  
+    valor_lancado = '0'  
     
     # Se você quiser pegar do frontend mas garantir um padrão caso venha vazio:
     # valor_lancado = data.get("lancado", "N") 
