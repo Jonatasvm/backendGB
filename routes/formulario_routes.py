@@ -72,10 +72,17 @@ def criar_formulario():
 
     data = request.get_json()
 
+    # --- FORÇAR VALORES AQUI (Backend) ---
+    # Se você quer que sempre grave 'N' (ou '0', ou False) ao criar:
+    valor_lancado = 'N'  
+    
+    # Se você quiser pegar do frontend mas garantir um padrão caso venha vazio:
+    # valor_lancado = data.get("lancado", "N") 
+
     campos = [
         "data_lancamento", "solicitante", "titular", "referente",
         "valor", "obra", "data_pagamento", "forma_pagamento",
-        "lancado", "cpf_cnpj", "chave_pix", "data_competencia",
+        "cpf_cnpj", "chave_pix", "data_competencia", # removi 'lancado' da validação obrigatória se for forçado
         "observacao"
     ]
 
@@ -93,9 +100,18 @@ def criar_formulario():
             data_competencia, carimbo, observacao
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
     """, (
-        data["data_lancamento"], data["solicitante"], data["titular"], data["referente"],
-        data["valor"], data["obra"], data["data_pagamento"], data["forma_pagamento"],
-        data["lancado"], data["cpf_cnpj"], data["chave_pix"], data["data_competencia"],
+        data["data_lancamento"], 
+        data["solicitante"], 
+        data["titular"], 
+        data["referente"],
+        data["valor"], 
+        data["obra"], 
+        data["data_pagamento"], 
+        data["forma_pagamento"],
+        valor_lancado,  # <--- AQUI ESTÁ A CORREÇÃO: Usamos a variável forçada
+        data["cpf_cnpj"], 
+        data["chave_pix"], 
+        data["data_competencia"],
         data["observacao"]
     ))
     conn.commit()
