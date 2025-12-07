@@ -10,39 +10,39 @@ formulario_bp = Blueprint("formulario", __name__)
 @formulario_bp.route("/formulario/titulares/search", methods=["GET", "OPTIONS"])
 @cross_origin()
 def buscar_titulares():
-    if request.method == "OPTIONS":
-        return jsonify({"status": "OK"}), 200
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
 
-    query = request.args.get("q", "")
-    if not query:
-        return jsonify([]), 200
+    query = request.args.get("q", "")
+    if not query:
+        return jsonify([]), 200
 
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Consulta para buscar pares distintos de titular e cpf_cnpj que começam com a query
-    # Usamos GROUP BY para obter o efeito de DISTINCT em ambas as colunas
-    sql_query = """
-        SELECT titular, cpf_cnpj 
-        FROM formulario 
-        WHERE titular LIKE %s 
-        GROUP BY titular, cpf_cnpj
-        LIMIT 10
-    """
-    
-    # Adicionamos '%' ao final da query para buscar por "começa com"
-    search_term = query + "%"
-    
-    try:
-        cursor.execute(sql_query, (search_term,))
-        titulares = cursor.fetchall()
-        return jsonify(titulares), 200
-    except Exception as e:
-        print(f"Erro ao buscar titulares: {e}")
-        return jsonify({"error": "Erro interno do servidor"}), 500
-    finally:
-        cursor.close()
-        conn.close()
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Consulta para buscar pares distintos de titular e cpf_cnpj que começam com a query
+    # Usamos GROUP BY para obter o efeito de DISTINCT em ambas as colunas
+    sql_query = """
+        SELECT titular, cpf_cnpj 
+        FROM formulario 
+        WHERE titular LIKE %s 
+        GROUP BY titular, cpf_cnpj
+        LIMIT 10
+    """
+    
+    # Adicionamos '%' ao final da query para buscar por "começa com"
+    search_term = query + "%"
+    
+    try:
+        cursor.execute(sql_query, (search_term,))
+        titulares = cursor.fetchall()
+        return jsonify(titulares), 200
+    except Exception as e:
+        print(f"Erro ao buscar titulares: {e}")
+        return jsonify({"error": "Erro interno do servidor"}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 # ===========================
 # LISTAR TODOS OS FORMULÁRIOS (GET)
@@ -50,16 +50,16 @@ def buscar_titulares():
 @formulario_bp.route("/formulario", methods=["GET", "OPTIONS"])
 @cross_origin()
 def listar_formularios():
-    if request.method == "OPTIONS":
-        return jsonify({"status": "OK"}), 200
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
 
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM formulario ORDER BY id DESC")
-    formularios = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return jsonify(formularios), 200
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM formulario ORDER BY id DESC")
+    formularios = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(formularios), 200
 
 # ===========================
 # CRIAR FORMULÁRIO (POST)
@@ -67,55 +67,55 @@ def listar_formularios():
 @formulario_bp.route("/formulario", methods=["POST", "OPTIONS"])
 @cross_origin()
 def criar_formulario():
-    if request.method == "OPTIONS":
-        return jsonify({"status": "OK"}), 200
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
 
-    data = request.get_json()
+    data = request.get_json()
 
-    # --- CORREÇÃO DE LÓGICA: Não forçar '0', mas aceitar o valor do payload ('Y') ---
+    # --- CORREÇÃO DE LÓGICA: Não forçar '0', mas aceitar o valor do payload ('Y') ---
     # Assume 'N' como default se o campo 'lancado' não vier no payload
-    valor_lancado = data.get("lancado", "N")  
-    
-    campos = [
-        "data_lancamento", "solicitante", "titular", "referente",
-        "valor", "obra", "data_pagamento", "forma_pagamento",
-        "cpf_cnpj", "chave_pix", "data_competencia", 
-        "observacao"
-    ]
+    valor_lancado = data.get("lancado", "N") 
+    
+    campos = [
+        "data_lancamento", "solicitante", "titular", "referente",
+        "valor", "obra", "data_pagamento", "forma_pagamento",
+        "cpf_cnpj", "chave_pix", "data_competencia", 
+        "observacao"
+    ]
 
-    # Validação simples
-    for campo in campos:
-        if campo not in data:
-            return jsonify({"error": f"Campo '{campo}' é obrigatório"}), 400
+    # Validação simples
+    for campo in campos:
+        if campo not in data:
+            return jsonify({"error": f"Campo '{campo}' é obrigatório"}), 400
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO formulario (
-            data_lancamento, solicitante, titular, referente, valor, obra, 
-            data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-            data_competencia, carimbo, observacao
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
-    """, (
-        data["data_lancamento"], 
-        data["solicitante"], 
-        data["titular"], 
-        data["referente"],
-        data["valor"], 
-        data["obra"], 
-        data["data_pagamento"], 
-        data["forma_pagamento"],
-        valor_lancado,  # <--- CORREÇÃO: Usa o valor de 'valor_lancado' (do payload ou default 'N')
-        data["cpf_cnpj"], 
-        data["chave_pix"], 
-        data["data_competencia"],
-        data["observacao"]
-    ))
-    conn.commit()
-    formulario_id = cursor.lastrowid
-    cursor.close()
-    conn.close()
-    return jsonify({"message": "Formulário criado", "id": formulario_id}), 201
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO formulario (
+            data_lancamento, solicitante, titular, referente, valor, obra, 
+            data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
+            data_competencia, carimbo, observacao
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+    """, (
+        data["data_lancamento"], 
+        data["solicitante"], 
+        data["titular"], 
+        data["referente"],
+        data["valor"], 
+        data["obra"], 
+        data["data_pagamento"], 
+        data["forma_pagamento"],
+        valor_lancado,  # <--- CORREÇÃO: Usa o valor de 'valor_lancado' (do payload ou default 'N')
+        data["cpf_cnpj"], 
+        data["chave_pix"], 
+        data["data_competencia"],
+        data["observacao"]
+    ))
+    conn.commit()
+    formulario_id = cursor.lastrowid
+    cursor.close()
+    conn.close()
+    return jsonify({"message": "Formulário criado", "id": formulario_id}), 201
 
 # ===========================
 # ATUALIZAR FORMULÁRIO (PUT)
@@ -124,40 +124,40 @@ def criar_formulario():
 @formulario_bp.route("/formulario/<int:form_id>", methods=["PUT", "OPTIONS"])
 @cross_origin()
 def atualizar_formulario(form_id):
-    if request.method == "OPTIONS":
-        return jsonify({"status": "OK"}), 200
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
 
-    data = request.get_json()
+    data = request.get_json()
     # Adicionando campos opcionais no array para que possam ser atualizados
-    campos = [
-        "data_lancamento", "solicitante", "titular", "referente",
-        "valor", "obra", "data_pagamento", "forma_pagamento",
-        "lancado", "cpf_cnpj", "chave_pix", "data_competencia",
-        "observacao", "conta", "quem_paga", "link_anexo", "categoria" # Incluídos campos opcionais
-    ]
+    campos = [
+        "data_lancamento", "solicitante", "titular", "referente",
+        "valor", "obra", "data_pagamento", "forma_pagamento",
+        "lancado", "cpf_cnpj", "chave_pix", "data_competencia",
+        "observacao", "conta", "quem_paga", "link_anexo", "categoria" # Incluídos campos opcionais
+    ]
 
-    # Atualiza apenas os campos enviados
-    set_clauses = []
-    valores = []
-    for campo in campos:
-        if campo in data:
-            set_clauses.append(f"{campo} = %s")
-            valores.append(data[campo])
+    # Atualiza apenas os campos enviados
+    set_clauses = []
+    valores = []
+    for campo in campos:
+        if campo in data:
+            set_clauses.append(f"{campo} = %s")
+            valores.append(data[campo])
 
-    if not set_clauses:
-        return jsonify({"error": "Nenhum campo para atualizar"}), 400
+    if not set_clauses:
+        return jsonify({"error": "Nenhum campo para atualizar"}), 400
 
-    query = f"UPDATE formulario SET {', '.join(set_clauses)} WHERE id = %s"
-    valores.append(form_id)
+    query = f"UPDATE formulario SET {', '.join(set_clauses)} WHERE id = %s"
+    valores.append(form_id)
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(query, tuple(valores))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, tuple(valores))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-    return jsonify({"message": "Formulário atualizado"}), 200
+    return jsonify({"message": "Formulário atualizado"}), 200
 
 # ===========================
 # DELETAR FORMULÁRIO (DELETE)
@@ -165,56 +165,52 @@ def atualizar_formulario(form_id):
 @formulario_bp.route("/formulario/<int:form_id>", methods=["DELETE", "OPTIONS"])
 @cross_origin()
 def deletar_formulario(form_id):
-    if request.method == "OPTIONS":
-        return jsonify({"status": "OK"}), 200
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-    return jsonify({"message": "Formulário deletado"}), 200
+    return jsonify({"message": "Formulário deletado"}), 200
 
 
 # nova rota 
 # ===========================
 @formulario_bp.route("/titulares/list", methods=["GET", "OPTIONS"])
 @cross_origin()
-def listar_titulares():
-    if request.method == "OPTIONS":
-        return jsonify({"status": "OK"}), 200
+def listar_titulares_distinct():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
 
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Busca todos os titulares distintos da tabela 'formulario'
-    # NOTA: Como você não tem um ID para o Titular, vamos usar um hash ou o nome como "ID".
-    # Pela sua versão anterior, o campo 'titular' é o que você usa para comparação.
-    sql_query = """
-        SELECT DISTINCT titular 
-        FROM formulario
-        WHERE titular IS NOT NULL AND titular != ''
-        ORDER BY titular ASC
-    """
-    
-    try:
-        cursor.execute(sql_query)
-        registros = cursor.fetchall()
-        
-        # Como o valor do filtro será o NOME (string) do titular,
-        # vamos formatar a resposta para { id: NOME, nome: NOME }
-        # Assim, o <select> do React usa o nome como ID.
-        titulares_formatados = [{
-            "id": t['titular'], 
-            "nome": t['titular']
-        } for t in registros]
-        
-        return jsonify(titulares_formatados), 200
-    except Exception as e:
-        print(f"Erro ao buscar lista de titulares: {e}")
-        return jsonify({"error": "Erro interno ao buscar titulares"}), 500
-    finally:
-        cursor.close()
-        conn.close()
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Busca todos os titulares distintos da tabela 'formulario'
+    sql_query = """
+        SELECT DISTINCT titular 
+        FROM formulario
+        WHERE titular IS NOT NULL AND titular != ''
+        ORDER BY titular ASC
+    """
+    
+    try:
+        cursor.execute(sql_query)
+        registros = cursor.fetchall()
+        
+        # Formata a resposta para { id: NOME, nome: NOME }
+        titulares_formatados = [{
+            "id": t['titular'], 
+            "nome": t['titular']
+        } for t in registros]
+        
+        return jsonify(titulares_formatados), 200
+    except Exception as e:
+        print(f"Erro ao buscar lista de titulares: {e}")
+        return jsonify({"error": "Erro interno ao buscar titulares"}), 500
+    finally:
+        cursor.close()
+        conn.close()
