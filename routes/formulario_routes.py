@@ -4,7 +4,62 @@ from db import get_connection
 
 formulario_bp = Blueprint("formulario", __name__)
 
-# ... (outras rotas: buscar_titulares, listar_formularios) ...
+# ===========================
+# BUSCAR TITULARES PARA AUTOCOMPLETE (GET)
+# ===========================
+@formulario_bp.route("/formulario/titulares/search", methods=["GET", "OPTIONS"])
+@cross_origin()
+def buscar_titulares():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    query = request.args.get("q", "")
+    if not query:
+        return jsonify([]), 200
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Consulta para buscar pares distintos de titular e cpf_cnpj que começam com a query
+    # Usamos GROUP BY para obter o efeito de DISTINCT em ambas as colunas
+    sql_query = """
+        SELECT titular, cpf_cnpj 
+        FROM formulario 
+        WHERE titular LIKE %s 
+        GROUP BY titular, cpf_cnpj
+        LIMIT 10
+    """
+    
+    # Adicionamos '%' ao final da query para buscar por "começa com"
+    search_term = query + "%"
+    
+    try:
+        cursor.execute(sql_query, (search_term,))
+        titulares = cursor.fetchall()
+        return jsonify(titulares), 200
+    except Exception as e:
+        print(f"Erro ao buscar titulares: {e}")
+        return jsonify({"error": "Erro interno do servidor"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# ===========================
+# LISTAR TODOS OS FORMULÁRIOS (GET)
+# ===========================
+@formulario_bp.route("/formulario", methods=["GET", "OPTIONS"])
+@cross_origin()
+def listar_formularios():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM formulario ORDER BY id DESC")
+    formularios = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(formularios), 200
 
 # ===========================
 # CRIAR FORMULÁRIO (POST)
@@ -17,17 +72,10 @@ def criar_formulario():
 
     data = request.get_json()
 
-    # --- FORÇAR VALORES AQUI (Backend) ---
-    # Se você quer que sempre grave 'N' (ou '0', ou False) ao criar:
-    valor_lancado = '0'  
-    
-    # Se você quiser pegar do frontend mas garantir um padrão caso venha vazio:
-    # valor_lancado = data.get("lancado", "N") 
-
     campos = [
         "data_lancamento", "solicitante", "titular", "referente",
         "valor", "obra", "data_pagamento", "forma_pagamento",
-        "cpf_cnpj", "chave_pix", "data_competencia", # removi 'lancado' da validação obrigatória se for forçado
+        "lancado", "cpf_cnpj", "chave_pix", "data_competencia",
         "observacao"
     ]
 
@@ -45,18 +93,9 @@ def criar_formulario():
             data_competencia, carimbo, observacao
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
     """, (
-        data["data_lancamento"], 
-        data["solicitante"], 
-        data["titular"], 
-        data["referente"],
-        data["valor"], 
-        data["obra"], 
-        data["data_pagamento"], 
-        data["forma_pagamento"],
-        valor_lancado,  # <--- AQUI ESTÁ A CORREÇÃO: Usamos a variável forçada
-        data["cpf_cnpj"], 
-        data["chave_pix"], 
-        data["data_competencia"],
+        data["data_lancamento"], data["solicitante"], data["titular"], data["referente"],
+        data["valor"], data["obra"], data["data_pagamento"], data["forma_pagamento"],
+        data["lancado"], data["cpf_cnpj"], data["chave_pix"], data["data_competencia"],
         data["observacao"]
     ))
     conn.commit()
@@ -109,7 +148,7 @@ def atualizar_formulario(form_id):
 
 
 # ===========================
-# DELETAR FORMULÁRIO (DELETE)a
+# DELETAR FORMULÁRIO (DELETE)
 # ===========================
 @formulario_bp.route("/formulario/<int:form_id>", methods=["DELETE", "OPTIONS"])
 @cross_origin()
