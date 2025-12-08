@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify,make_response
 from flask_cors import cross_origin
 from db import get_connection
 
@@ -176,6 +176,98 @@ def deletar_formulario(form_id):
     conn.close()
 
     return jsonify({"message": "Formulário deletado"}), 200
+
+# =====================================================
+# ✅ NOVO: EXPORTAR CSV E LANÇAR MÚLTIPLOS REGISTROS (POST)
+# =====================================================
+@formulario_bp.route("/formulario/exportar", methods=["POST", "OPTIONS"])
+@cross_origin()
+def exportar_e_lancar():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    data = request.get_json()
+    # Esperamos uma lista de IDs [1, 5, 8, ...]
+    ids = data.get("ids", []) 
+
+    if not ids:
+        return jsonify({"error": "Nenhum ID de registro fornecido."}), 400
+    
+    # 1. Conexão com o Banco de Dados
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Cria uma string com placeholders (%s) para a query SQL: "%s, %s, %s"
+    placeholders = ', '.join(['%s'] * len(ids)) 
+    
+    try:
+        # 2. ATUALIZAÇÃO: Muda o status de 'N' (pendente) para 'Y' (lançado)
+        # O banco de dados faz isso em uma única transação, muito mais rápido!
+        update_query = f"UPDATE formulario SET lancado = 'Y' WHERE id IN ({placeholders})"
+        cursor.execute(update_query, ids)
+        
+        # 3. BUSCA: Recupera os dados completos dos registros recém-lançados
+        select_query = f"SELECT * FROM formulario WHERE id IN ({placeholders}) ORDER BY id ASC"
+        cursor.execute(select_query, ids)
+        registros = cursor.fetchall()
+        
+        # Confirma as alterações no banco de dados
+        conn.commit()
+
+        # 4. GERAÇÃO do CSV
+        
+        # Cabeçalhos do CSV (garante que todos os campos estão inclusos)
+        csv_headers = [
+            "ID", "Data Lancamento", "Solicitante", "Titular", "CPF/CNPJ", 
+            "Chave PIX", "Referente", "Valor", "Obra (ID)", "Data Pagamento", 
+            "Forma Pagamento", "Data Competencia", "Observacao", "Status",
+            "Conta", "Quem Paga", "Link Anexo", "Categoria"
+        ]
+        
+        csv_content = [";".join(csv_headers)] # Primeira linha: cabeçalhos
+        
+        for r in registros:
+            # Converte valores para strings compatíveis com CSV/Excel
+            row = [
+                str(r.get('id', '')),
+                str(r.get('data_lancamento', '')),
+                str(r.get('solicitante', '')),
+                str(r.get('titular', '')),
+                str(r.get('cpf_cnpj', '')),
+                str(r.get('chave_pix', '')),
+                f'"{str(r.get('referente', '')).replace("\"", "\"\"")}"', # Aspas para aceitar vírgulas internas
+                str(r.get('valor', 0)).replace('.', ','), # Formato BR para o Excel
+                str(r.get('obra', '')),
+                str(r.get('data_pagamento', '')),
+                str(r.get('forma_pagamento', '')),
+                str(r.get('data_competencia', '')),
+                f'"{str(r.get('observacao', '')).replace("\"", "\"\"")}"',
+                "LANCADO" if r.get('lancado') == 'Y' else "PENDENTE",
+                str(r.get('conta', '')),
+                str(r.get('quemPaga', '')),
+                str(r.get('linkAnexo', '')),
+                str(r.get('categoria', '')),
+            ]
+            csv_content.append(";".join(row))
+
+        csv_string = "\n".join(csv_content)
+        
+        # 5. RETORNO: Retorna o arquivo CSV
+        response = make_response(csv_string)
+        # Define o tipo de conteúdo como CSV e força o download com o nome de arquivo
+        response.headers["Content-Disposition"] = "attachment; filename=lancamentos_exportados.csv"
+        response.headers["Content-type"] = "text/csv; charset=utf-8"
+        
+        return response, 200
+
+    except Exception as e:
+        # Se algo falhar, desfaz a alteração para não ter registros incompletos
+        conn.rollback() 
+        print(f"Erro ao exportar e lançar: {e}")
+        return jsonify({"error": f"Erro interno ao processar a exportação: {str(e)}"}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # nova rota 
