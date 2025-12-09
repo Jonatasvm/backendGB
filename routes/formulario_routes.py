@@ -1,27 +1,34 @@
-from flask import Blueprint, request, jsonify
+# C:\Users\Borracharia\IdeaProjects\backendGB\routes\formulario_routes.py
+
+## =========================================================
+## 1. IMPORTS COMBINADOS
+## =========================================================
+from flask import Blueprint, request, jsonify, make_response
 from flask_cors import cross_origin
 from db import get_connection
+import pandas as pd
+from io import BytesIO
+import json
 
 formulario_bp = Blueprint("formulario", __name__)
 
-# ===========================
-# BUSCAR TITULARES PARA AUTOCOMPLETE (GET)
-# ===========================
+
+## =========================================================
+## 2. SUAS ROTAS EXISTENTES (SEM ALTERAÇÃO)
+## =========================================================
+
+# ROTA BUSCAR TITULARES (AUTOCOMPLETE)
 @formulario_bp.route("/formulario/titulares/search", methods=["GET", "OPTIONS"])
 @cross_origin()
 def buscar_titulares():
+    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
-
     query = request.args.get("q", "")
     if not query:
         return jsonify([]), 200
-
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
-    
-    # Consulta para buscar pares distintos de titular e cpf_cnpj que começam com a query
-    # Usamos GROUP BY para obter o efeito de DISTINCT em ambas as colunas
     sql_query = """
         SELECT titular, cpf_cnpj 
         FROM formulario 
@@ -29,10 +36,7 @@ def buscar_titulares():
         GROUP BY titular, cpf_cnpj
         LIMIT 10
     """
-    
-    # Adicionamos '%' ao final da query para buscar por "começa com"
     search_term = query + "%"
-    
     try:
         cursor.execute(sql_query, (search_term,))
         titulares = cursor.fetchall()
@@ -44,15 +48,13 @@ def buscar_titulares():
         cursor.close()
         conn.close()
 
-# ===========================
-# LISTAR TODOS OS FORMULÁRIOS (GET)
-# ===========================
+# ROTA LISTAR TODOS OS FORMULÁRIOS (GET)
 @formulario_bp.route("/formulario", methods=["GET", "OPTIONS"])
 @cross_origin()
 def listar_formularios():
+    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
-
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM formulario ORDER BY id DESC")
@@ -61,33 +63,24 @@ def listar_formularios():
     conn.close()
     return jsonify(formularios), 200
 
-# ===========================
-# CRIAR FORMULÁRIO (POST)
-# ===========================
+# ROTA CRIAR FORMULÁRIO (POST)
 @formulario_bp.route("/formulario", methods=["POST", "OPTIONS"])
 @cross_origin()
 def criar_formulario():
+    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
-
     data = request.get_json()
-
-    # --- CORREÇÃO DE LÓGICA: Não forçar '0', mas aceitar o valor do payload ('Y') ---
-    # Assume 'N' como default se o campo 'lancado' não vier no payload
     valor_lancado = data.get("lancado", "N") 
-    
     campos = [
         "data_lancamento", "solicitante", "titular", "referente",
         "valor", "obra", "data_pagamento", "forma_pagamento",
         "cpf_cnpj", "chave_pix", "data_competencia", 
         "observacao"
     ]
-
-    # Validação simples
     for campo in campos:
         if campo not in data:
             return jsonify({"error": f"Campo '{campo}' é obrigatório"}), 400
-
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -97,18 +90,9 @@ def criar_formulario():
             data_competencia, carimbo, observacao
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
     """, (
-        data["data_lancamento"], 
-        data["solicitante"], 
-        data["titular"], 
-        data["referente"],
-        data["valor"], 
-        data["obra"], 
-        data["data_pagamento"], 
-        data["forma_pagamento"],
-        valor_lancado,  # <--- CORREÇÃO: Usa o valor de 'valor_lancado' (do payload ou default 'N')
-        data["cpf_cnpj"], 
-        data["chave_pix"], 
-        data["data_competencia"],
+        data["data_lancamento"], data["solicitante"], data["titular"], data["referente"],
+        data["valor"], data["obra"], data["data_pagamento"], data["forma_pagamento"],
+        valor_lancado, data["cpf_cnpj"], data["chave_pix"], data["data_competencia"],
         data["observacao"]
     ))
     conn.commit()
@@ -117,96 +101,143 @@ def criar_formulario():
     conn.close()
     return jsonify({"message": "Formulário criado", "id": formulario_id}), 201
 
-# ===========================
-# ATUALIZAR FORMULÁRIO (PUT)
-# Rota usada para updates completos E para o status toggle (payload parcial)
-# ===========================
+# ROTA ATUALIZAR FORMULÁRIO (PUT)
 @formulario_bp.route("/formulario/<int:form_id>", methods=["PUT", "OPTIONS"])
 @cross_origin()
 def atualizar_formulario(form_id):
+    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
-
     data = request.get_json()
-    # Adicionando campos opcionais no array para que possam ser atualizados
     campos = [
         "data_lancamento", "solicitante", "titular", "referente",
         "valor", "obra", "data_pagamento", "forma_pagamento",
         "lancado", "cpf_cnpj", "chave_pix", "data_competencia",
-        "observacao", "conta", "quem_paga", "link_anexo", "categoria" # Incluídos campos opcionais
+        "observacao", "conta", "quem_paga", "link_anexo", "categoria"
     ]
-
-    # Atualiza apenas os campos enviados
     set_clauses = []
     valores = []
     for campo in campos:
         if campo in data:
             set_clauses.append(f"{campo} = %s")
             valores.append(data[campo])
-
     if not set_clauses:
         return jsonify({"error": "Nenhum campo para atualizar"}), 400
-
     query = f"UPDATE formulario SET {', '.join(set_clauses)} WHERE id = %s"
     valores.append(form_id)
-
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(query, tuple(valores))
     conn.commit()
     cursor.close()
     conn.close()
-
     return jsonify({"message": "Formulário atualizado"}), 200
 
-# ===========================
-# DELETAR FORMULÁRIO (DELETE)
-# ===========================
+# ROTA DELETAR FORMULÁRIO (DELETE)
 @formulario_bp.route("/formulario/<int:form_id>", methods=["DELETE", "OPTIONS"])
 @cross_origin()
 def deletar_formulario(form_id):
+    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
-
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
     conn.commit()
     cursor.close()
     conn.close()
-
     return jsonify({"message": "Formulário deletado"}), 200
 
 
-# nova rota 
-# ===========================
-@formulario_bp.route("/titulares/list", methods=["GET", "OPTIONS"])
-@cross_origin()
-def listar_titulares_distinct():
-    if request.method == "OPTIONS":
-        return jsonify({"status": "OK"}), 200
+## =======================================================================
+## 3. ✅ CÓDIGO NOVO PARA EXPORTAÇÃO (ADICIONADO AQUI)
+## =======================================================================
 
+# FUNÇÃO AUXILIAR PARA BUSCAR DADOS POR IDS
+def get_records_by_ids(ids):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # Busca todos os titulares distintos da tabela 'formulario'
+    # Cria uma string com placeholders para a query SQL: "%s, %s, %s..."
+    placeholders = ', '.join(['%s'] * len(ids))
+    
+    # Consulta SQL para buscar os registros cujos IDs estão na lista
+    # DICA: Em vez de 'SELECT *', liste as colunas que você quer no Excel para melhor performance.
+    sql_query = f"SELECT * FROM formulario WHERE id IN ({placeholders}) ORDER BY data_lancamento DESC"
+    
+    try:
+        # A lista de IDs deve ser passada como uma tupla para o execute
+        cursor.execute(sql_query, tuple(ids))
+        records = cursor.fetchall()
+        return records
+    except Exception as e:
+        print(f"Erro ao buscar registros para exportação: {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+# NOVA ROTA: EXPORTAR REGISTROS SELECIONADOS PARA XLSX
+@formulario_bp.route('/formulario/export/xls', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def exportar_formularios_para_xls():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+        
+    try:
+        data = request.get_json()
+        ids = data.get('ids', [])
+
+        if not ids:
+            return jsonify({"message": "Nenhum ID de registro fornecido para exportação."}), 400
+
+        # Busca os dados no DB usando a função auxiliar
+        records = get_records_by_ids(ids)
+        
+        if not records:
+            return jsonify({"message": "Nenhum registro encontrado para os IDs fornecidos."}), 404
+        
+        df = pd.DataFrame(records)
+        
+        output = BytesIO()
+        
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Registros Selecionados', index=False)
+        
+        output.seek(0)
+        
+        response = make_response(output.read())
+        response.headers['Content-Disposition'] = 'attachment; filename=registros_selecionados.xlsx'
+        response.headers['Content-type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        
+        return response
+
+    except Exception as e:
+        print(f"Erro interno ao exportar: {e}")
+        return jsonify({"message": f"Erro interno ao exportar: {str(e)}"}), 500
+
+
+## =========================================================
+## 4. SUA OUTRA ROTA (SEM ALTERAÇÃO)
+## =========================================================
+@formulario_bp.route("/titulares/list", methods=["GET", "OPTIONS"])
+@cross_origin()
+def listar_titulares_distinct():
+    # ... (seu código existente, sem alteração)
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
     sql_query = """
         SELECT DISTINCT titular 
         FROM formulario
         WHERE titular IS NOT NULL AND titular != ''
         ORDER BY titular ASC
     """
-    
     try:
         cursor.execute(sql_query)
         registros = cursor.fetchall()
-        
-        # Formata a resposta para { id: NOME, nome: NOME }
-        titulares_formatados = [{
-            "id": t['titular'], 
-            "nome": t['titular']
-        } for t in registros]
-        
+        titulares_formatados = [{"id": t['titular'], "nome": t['titular']} for t in registros]
         return jsonify(titulares_formatados), 200
     except Exception as e:
         print(f"Erro ao buscar lista de titulares: {e}")
