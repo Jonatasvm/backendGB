@@ -14,14 +14,13 @@ formulario_bp = Blueprint("formulario", __name__)
 
 
 ## =========================================================
-## 2. SUAS ROTAS EXISTENTES (SEM ALTERAÇÃO)
+## 2. SUAS ROTAS EXISTENTES (CÓDIGO BASE)
 ## =========================================================
 
 # ROTA BUSCAR TITULARES (AUTOCOMPLETE)
 @formulario_bp.route("/formulario/titulares/search", methods=["GET", "OPTIONS"])
 @cross_origin()
 def buscar_titulares():
-    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
     query = request.args.get("q", "")
@@ -52,7 +51,6 @@ def buscar_titulares():
 @formulario_bp.route("/formulario", methods=["GET", "OPTIONS"])
 @cross_origin()
 def listar_formularios():
-    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
     conn = get_connection()
@@ -67,7 +65,6 @@ def listar_formularios():
 @formulario_bp.route("/formulario", methods=["POST", "OPTIONS"])
 @cross_origin()
 def criar_formulario():
-    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
     data = request.get_json()
@@ -105,7 +102,6 @@ def criar_formulario():
 @formulario_bp.route("/formulario/<int:form_id>", methods=["PUT", "OPTIONS"])
 @cross_origin()
 def atualizar_formulario(form_id):
-    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
     data = request.get_json()
@@ -137,7 +133,6 @@ def atualizar_formulario(form_id):
 @formulario_bp.route("/formulario/<int:form_id>", methods=["DELETE", "OPTIONS"])
 @cross_origin()
 def deletar_formulario(form_id):
-    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
     conn = get_connection()
@@ -150,7 +145,7 @@ def deletar_formulario(form_id):
 
 
 ## =======================================================================
-## 3. ✅ CÓDIGO NOVO PARA EXPORTAÇÃO (ADICIONADO AQUI)
+## 3. ✅ CÓDIGO CORRIGIDO E APRIMORADO PARA EXPORTAÇÃO
 ## =======================================================================
 
 # FUNÇÃO AUXILIAR PARA BUSCAR DADOS POR IDS
@@ -162,11 +157,10 @@ def get_records_by_ids(ids):
     placeholders = ', '.join(['%s'] * len(ids))
     
     # Consulta SQL para buscar os registros cujos IDs estão na lista
-    # DICA: Em vez de 'SELECT *', liste as colunas que você quer no Excel para melhor performance.
     sql_query = f"SELECT * FROM formulario WHERE id IN ({placeholders}) ORDER BY data_lancamento DESC"
     
     try:
-        # A lista de IDs deve ser passada como uma tupla para o execute
+        # A lista de IDs é convertida para uma tupla para execução segura
         cursor.execute(sql_query, tuple(ids))
         records = cursor.fetchall()
         return records
@@ -195,10 +189,41 @@ def exportar_formularios_para_xls():
         records = get_records_by_ids(ids)
         
         if not records:
+            # Importante: O frontend está esperando ler esta mensagem em caso de 404
             return jsonify({"message": "Nenhum registro encontrado para os IDs fornecidos."}), 404
         
         df = pd.DataFrame(records)
         
+        # 1. RENOMEIA COLUNAS para torná-las amigáveis no Excel
+        column_rename = {
+            'id': 'ID',
+            'data_lancamento': 'Data Lançamento',
+            'solicitante': 'Solicitante',
+            'titular': 'Titular',
+            'referente': 'Referente',
+            'valor': 'Valor',
+            'obra': 'Obra',
+            'data_pagamento': 'Data Pagamento',
+            'forma_pagamento': 'Forma de Pagto',
+            'lancado': 'Lançado (S/N)',
+            'cpf_cnpj': 'CPF/CNPJ',
+            'chave_pix': 'Chave PIX',
+            'data_competencia': 'Data Competência',
+            'observacao': 'Observação',
+            'conta': 'Conta',
+            'quem_paga': 'Quem Paga',
+            'link_anexo': 'Link Anexo',
+            'categoria': 'Categoria',
+            # 'carimbo' é removido abaixo
+        }
+        df.rename(columns=column_rename, inplace=True)
+        
+        # 2. REMOVE COLUNAS TÉCNICAS que não são necessárias no relatório
+        columns_to_drop = [col for col in ['carimbo'] if col in df.columns]
+        if columns_to_drop:
+             df = df.drop(columns=columns_to_drop)
+        
+        # 3. Processo de geração do Excel
         output = BytesIO()
         
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -206,6 +231,7 @@ def exportar_formularios_para_xls():
         
         output.seek(0)
         
+        # 4. Cria e retorna a resposta
         response = make_response(output.read())
         response.headers['Content-Disposition'] = 'attachment; filename=registros_selecionados.xlsx'
         response.headers['Content-type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
@@ -214,16 +240,16 @@ def exportar_formularios_para_xls():
 
     except Exception as e:
         print(f"Erro interno ao exportar: {e}")
-        return jsonify({"message": f"Erro interno ao exportar: {str(e)}"}), 500
+        # Retorna 500 com JSON
+        return jsonify({"message": f"Erro interno de servidor: {str(e)}"}), 500
 
 
 ## =========================================================
-## 4. SUA OUTRA ROTA (SEM ALTERAÇÃO)
+## 4. SUA OUTRA ROTA (CÓDIGO BASE)
 ## =========================================================
 @formulario_bp.route("/titulares/list", methods=["GET", "OPTIONS"])
 @cross_origin()
 def listar_titulares_distinct():
-    # ... (seu código existente, sem alteração)
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
     conn = get_connection()
