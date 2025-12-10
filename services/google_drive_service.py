@@ -13,8 +13,8 @@ CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), '..', 'credentials.js
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 # ID da pasta raiz onde salvar os lançamentos
-# https://drive.google.com/drive/folders/1bVQSFBReGXSQsWxSZL_ImUWL62ZRt2nn
-ROOT_FOLDER_ID = "1bVQSFBReGXSQsWxSZL_ImUWL62ZRt2nn"
+# https://drive.google.com/drive/folders/1RxDbvI7PIph4VhrGa4OECs4orEUb6BvD
+ROOT_FOLDER_ID = "1RxDbvI7PIph4VhrGa4OECs4orEUb6BvD"
 
 def get_drive_service():
     """Retorna um cliente autenticado do Google Drive"""
