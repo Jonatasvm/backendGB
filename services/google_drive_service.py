@@ -5,10 +5,8 @@ Realiza upload de arquivos e cria pastas
 
 import os
 from google.oauth2 import service_account
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from io import BytesIO
+from googleapiclient.http import MediaIoBaseUpload
 
 # Credenciais do Google
 CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
@@ -59,13 +57,15 @@ def upload_file_to_drive(file_obj, filename, folder_id):
     Faz upload de um arquivo para o Google Drive
     
     Args:
-        file_obj: Objeto de arquivo (BytesIO ou file-like object)
+        file_obj: Objeto de arquivo (FileStorage do Flask)
         filename: Nome do arquivo
         folder_id: ID da pasta destino
     
     Returns:
         Dict com 'id' e 'webViewLink' do arquivo
     """
+    from googleapiclient.http import MediaIoBaseUpload
+    
     service = get_drive_service()
     
     file_metadata = {
@@ -73,17 +73,19 @@ def upload_file_to_drive(file_obj, filename, folder_id):
         'parents': [folder_id]
     }
     
-    media = MediaFileUpload(
-        file_obj.filename if hasattr(file_obj, 'filename') else None,
+    # Detectar o MIME type baseado na extensão
+    import mimetypes
+    mimetype, _ = mimetypes.guess_type(filename)
+    if mimetype is None:
+        mimetype = 'application/octet-stream'
+    
+    # Usar MediaIoBaseUpload para arquivos do Flask (FileStorage)
+    media = MediaIoBaseUpload(
+        file_obj.stream,
+        mimetype=mimetype,
         resumable=True,
         chunksize=1024 * 1024  # 1MB chunks
     )
-    
-    # Se não temos filename direto, criamos a media de forma diferente
-    if isinstance(file_obj, BytesIO) or not hasattr(file_obj, 'filename'):
-        # Para uploads de BytesIO
-        from googleapiclient.http import MediaIoBaseUpload
-        media = MediaIoBaseUpload(file_obj, mimetype='application/octet-stream', resumable=True)
     
     file_obj_drive = service.files().create(
         body=file_metadata,
@@ -114,23 +116,30 @@ def upload_files_batch(files, form_id, obra_id):
     try:
         # Criar pasta para este lançamento
         folder_name = f"Lançamento_{form_id}_Obra_{obra_id}"
+        print(f"[DEBUG] Criando pasta: {folder_name}")
         folder_id = create_folder(folder_name)
+        print(f"[DEBUG] Pasta criada com ID: {folder_id}")
         
         # Upload de cada arquivo
         upload_links = []
-        for file in files:
+        for idx, file in enumerate(files):
             if file and file.filename:
+                print(f"[DEBUG] Fazendo upload do arquivo {idx + 1}: {file.filename}")
                 result = upload_file_to_drive(file, file.filename, folder_id)
                 upload_links.append({
                     'name': result['name'],
                     'link': result['webViewLink'],
                     'drive_id': result['id']
                 })
+                print(f"[DEBUG] Arquivo {idx + 1} upado com sucesso")
         
+        print(f"[DEBUG] Total de arquivos upados: {len(upload_links)}")
         return upload_links
     
     except Exception as e:
-        print(f"Erro ao fazer upload para Google Drive: {e}")
+        print(f"[ERRO] Erro ao fazer upload para Google Drive: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise
 
 
