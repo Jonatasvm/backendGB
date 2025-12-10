@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_cors import cross_origin
 from db import get_connection
+from services.google_drive_service import upload_files_batch, create_folder
+import json
 
 formulario_bp = Blueprint("formulario", __name__)
 
@@ -214,3 +216,101 @@ def listar_titulares_distinct():
     finally:
         cursor.close()
         conn.close()
+
+# ===========================
+# UPLOAD PARA GOOGLE DRIVE (POST)
+# ===========================
+@formulario_bp.route("/upload/google-drive", methods=["POST", "OPTIONS"])
+@cross_origin()
+def upload_google_drive():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    data = request.get_json()
+    arquivos = data.get("arquivos", [])
+    pasta_id = data.get("pasta_id")
+
+    if not arquivos or not pasta_id:
+        return jsonify({"error": "Arquivos e pasta_id são obrigatórios"}), 400
+
+    # Cria a pasta no Google Drive (se necessário) e faz o upload dos arquivos
+    try:
+        # Primeiro, cria a pasta onde os arquivos serão salvos
+        pasta_id = create_folder(pasta_id, "Arquivos do Formulário")
+        
+        # Faz o upload de cada arquivo
+        for arquivo in arquivos:
+            arquivo_id = upload_files_batch([arquivo], pasta_id)
+        
+        return jsonify({"message": "Arquivos enviados com sucesso", "pasta_id": pasta_id}), 200
+    except Exception as e:
+        print(f"Erro ao fazer upload para o Google Drive: {e}")
+        return jsonify({"error": "Erro interno ao fazer upload"}), 500
+
+
+# ===========================
+# UPLOAD DE ARQUIVOS PARA GOOGLE DRIVE (POST)
+# ===========================
+@formulario_bp.route("/formulario/<int:form_id>/upload-anexos", methods=["POST", "OPTIONS"])
+@cross_origin()
+def upload_anexos(form_id):
+    """
+    Realiza upload de múltiplos arquivos para Google Drive
+    e salva os links no banco de dados
+    
+    Espera:
+    - files: Múltiplos arquivos via form-data
+    - obra_id: ID da obra (para nomear a pasta)
+    """
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    try:
+        # Validar se o formulário existe
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, obra FROM formulario WHERE id = %s", (form_id,))
+        formulario = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not formulario:
+            return jsonify({"error": "Formulário não encontrado"}), 404
+        
+        # Obter arquivos do request
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({"error": "Nenhum arquivo foi enviado"}), 400
+        
+        obra_id = formulario.get('obra', 'sem-obra')
+        
+        # Fazer upload para Google Drive
+        upload_results = upload_files_batch(files, form_id, obra_id)
+        
+        if not upload_results:
+            return jsonify({"error": "Falha ao fazer upload dos arquivos"}), 500
+        
+        # Salvar links no banco de dados (JSON)
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Converter lista de links para JSON
+        links_json = json.dumps(upload_results)
+        
+        cursor.execute(
+            "UPDATE formulario SET link_anexo = %s WHERE id = %s",
+            (links_json, form_id)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "message": "Arquivos enviados com sucesso",
+            "form_id": form_id,
+            "files": upload_results
+        }), 200
+    
+    except Exception as e:
+        print(f"Erro ao fazer upload: {e}")
+        return jsonify({"error": f"Erro ao fazer upload: {str(e)}"}), 500
