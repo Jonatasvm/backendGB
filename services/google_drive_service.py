@@ -158,10 +158,12 @@ def upload_files_batch(files, form_id, obra_id):
             if file and file.filename:
                 print(f"[DEBUG] Fazendo upload do arquivo {idx + 1}: {file.filename}")
                 result = upload_file_to_drive(file, file.filename, folder_id)
+                file_id = result['id']
                 upload_links.append({
                     'name': result['name'],
                     'link': result['webViewLink'],
-                    'drive_id': result['id']
+                    'download': f"https://drive.google.com/uc?export=download&id={file_id}",
+                    'drive_id': file_id
                 })
                 print(f"[DEBUG] Arquivo {idx + 1} upado com sucesso")
         
