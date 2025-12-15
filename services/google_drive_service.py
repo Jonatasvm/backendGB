@@ -1,27 +1,59 @@
 """
 Serviço para integração com Google Drive
 Realiza upload de arquivos e cria pastas
+Usa OAuth 2.0 (autenticação do usuário) ao invés de Service Account
 """
 
 import os
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# Credenciais do Google
-CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
+# Caminhos dos arquivos de credenciais
+BASE_DIR = os.path.dirname(__file__)
+CREDENTIALS_FILE = os.path.join(BASE_DIR, '..', 'credencials.json')  # OAuth client secrets
+TOKEN_FILE = os.path.join(BASE_DIR, '..', 'token.json')              # Token do usuário autenticado
+
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 # ID da pasta raiz onde salvar os lançamentos
-# https://drive.google.com/drive/folders/1bVQSFBReGXSQsWxSZL_ImUWL62ZRt2nn
-ROOT_FOLDER_ID = "1bVQSFBReGXSQsWxSZL_ImUWL62ZRt2nn"
+# https://drive.google.com/drive/folders/123C6ItHLqoRnb_hNNHRwE7FczSh9yhun
+ROOT_FOLDER_ID = "123C6ItHLqoRnb_hNNHRwE7FczSh9yhun"
+
+
+def get_credentials():
+    """
+    Obtém credenciais OAuth do usuário.
+    Se não existir token ou estiver expirado, abre o navegador para login.
+    """
+    creds = None
+
+    # Verifica se já existe um token salvo
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+
+    # Se não há credenciais válidas, faz o fluxo de autenticação
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                CREDENTIALS_FILE, SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+
+        # Salva o token para próximas execuções
+        with open(TOKEN_FILE, 'w') as token:
+            token.write(creds.to_json())
+
+    return creds
+
 
 def get_drive_service():
-    """Retorna um cliente autenticado do Google Drive"""
-    credentials = service_account.Credentials.from_service_account_file(
-        CREDENTIALS_PATH, 
-        scopes=SCOPES
-    )
+    """Retorna um cliente autenticado do Google Drive usando OAuth"""
+    credentials = get_credentials()
     return build('drive', 'v3', credentials=credentials)
 
 
