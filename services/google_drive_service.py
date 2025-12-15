@@ -125,8 +125,23 @@ def upload_file_to_drive(file_obj, filename, folder_id):
         fields='id, webViewLink'
     ).execute()
     
+    file_id = file_obj_drive.get('id')
+    
+    # Tornar o arquivo público (qualquer pessoa com o link pode ver/baixar)
+    try:
+        service.permissions().create(
+            fileId=file_id,
+            body={
+                'type': 'anyone',
+                'role': 'reader'
+            }
+        ).execute()
+        print(f"[DEBUG] Arquivo {filename} tornado público")
+    except Exception as e:
+        print(f"[AVISO] Não foi possível tornar o arquivo público: {e}")
+    
     return {
-        'id': file_obj_drive.get('id'),
+        'id': file_id,
         'webViewLink': file_obj_drive.get('webViewLink'),
         'name': filename
     }
