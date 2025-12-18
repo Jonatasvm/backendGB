@@ -1,59 +1,27 @@
 """
 Serviço para integração com Google Drive
 Realiza upload de arquivos e cria pastas
-Usa OAuth 2.0 (autenticação do usuário) ao invés de Service Account
 """
 
 import os
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# Caminhos dos arquivos de credenciais
-BASE_DIR = os.path.dirname(__file__)
-CREDENTIALS_FILE = os.path.join(BASE_DIR, '..', 'credencials.json')  # OAuth client secrets
-TOKEN_FILE = os.path.join(BASE_DIR, '..', 'token.json')              # Token do usuário autenticado
-
+# Credenciais do Google
+CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), '..', 'credentials.json')
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 # ID da pasta raiz onde salvar os lançamentos
-# https://drive.google.com/drive/folders/123C6ItHLqoRnb_hNNHRwE7FczSh9yhun
-ROOT_FOLDER_ID = "123C6ItHLqoRnb_hNNHRwE7FczSh9yhun"
-
-
-def get_credentials():
-    """
-    Obtém credenciais OAuth do usuário.
-    Se não existir token ou estiver expirado, abre o navegador para login.
-    """
-    creds = None
-
-    # Verifica se já existe um token salvo
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-    # Se não há credenciais válidas, faz o fluxo de autenticação
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-
-        # Salva o token para próximas execuções
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
-
-    return creds
-
+# https://drive.google.com/drive/folders/1bVQSFBReGXSQsWxSZL_ImUWL62ZRt2nn
+ROOT_FOLDER_ID = "1bVQSFBReGXSQsWxSZL_ImUWL62ZRt2nn"
 
 def get_drive_service():
-    """Retorna um cliente autenticado do Google Drive usando OAuth"""
-    credentials = get_credentials()
+    """Retorna um cliente autenticado do Google Drive"""
+    credentials = service_account.Credentials.from_service_account_file(
+        CREDENTIALS_PATH, 
+        scopes=SCOPES
+    )
     return build('drive', 'v3', credentials=credentials)
 
 
@@ -125,23 +93,8 @@ def upload_file_to_drive(file_obj, filename, folder_id):
         fields='id, webViewLink'
     ).execute()
     
-    file_id = file_obj_drive.get('id')
-    
-    # Tornar o arquivo público (qualquer pessoa com o link pode ver/baixar)
-    try:
-        service.permissions().create(
-            fileId=file_id,
-            body={
-                'type': 'anyone',
-                'role': 'reader'
-            }
-        ).execute()
-        print(f"[DEBUG] Arquivo {filename} tornado público")
-    except Exception as e:
-        print(f"[AVISO] Não foi possível tornar o arquivo público: {e}")
-    
     return {
-        'id': file_id,
+        'id': file_obj_drive.get('id'),
         'webViewLink': file_obj_drive.get('webViewLink'),
         'name': filename
     }
@@ -173,12 +126,10 @@ def upload_files_batch(files, form_id, obra_id):
             if file and file.filename:
                 print(f"[DEBUG] Fazendo upload do arquivo {idx + 1}: {file.filename}")
                 result = upload_file_to_drive(file, file.filename, folder_id)
-                file_id = result['id']
                 upload_links.append({
                     'name': result['name'],
                     'link': result['webViewLink'],
-                    'download': f"https://drive.google.com/uc?export=download&id={file_id}",
-                    'drive_id': file_id
+                    'drive_id': result['id']
                 })
                 print(f"[DEBUG] Arquivo {idx + 1} upado com sucesso")
         
