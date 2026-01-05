@@ -1,53 +1,115 @@
 """
-Execute este script UMA VEZ para gerar o token.json
-Depois disso o backend funciona normalmente.
+Script para testar Google Drive API com API Key
+✅ Simples e direto - sem OAuth, sem tokens!
 
-Este script usa OAuth 2.0 Web para autenticar com Google Drive.
+Execute: python gerar_token.py
 """
 
 import os
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-SCOPES = ['https://www.googleapis.com/auth/drive']
-# ✅ ALTERADO: Usar o novo client_secret.json
-CREDENTIALS_FILE = 'client_secret.json'
-TOKEN_FILE = 'token.json'
+# ✅ SUA API KEY
+API_KEY = "AIzaSyD1XxTV5p6SDm5-WkEPmh05XVtM1nEFrxY"
 
-def gerar_token():
-    creds = None
+# ID da pasta do Google Drive
+FOLDER_ID = "123C6ItHLqoRnb_hNNHRwE7FczSh9yhun"
 
-    if os.path.exists(TOKEN_FILE):
-        print(f"📄 Carregando token existente de {TOKEN_FILE}...")
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            print("🔄 Refreshing token...")
-            creds.refresh(Request())
-        else:
-            print(f"🔐 Abrindo navegador para autorizar com Google...")
-            print(f"📁 Usando credenciais de: {CREDENTIALS_FILE}")
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES
-            )
-            # ✅ CORRIGIDO: Usar porta fixa 8080 (deve estar configurada no Google Cloud)
-            creds = flow.run_local_server(port=8080)
-
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
+def testar_api_key():
+    """Testar se a API Key funciona"""
+    
+    try:
+        print("=" * 50)
+        print("🚀 Google Drive API - Teste com API Key")
+        print("=" * 50)
+        print()
+        print(f"🔑 API Key: {API_KEY[:20]}...")
+        print(f"📁 Pasta ID: {FOLDER_ID}")
+        print()
         
-        print("✅ token.json gerado com sucesso!")
-        print(f"📍 Arquivo salvo em: {os.path.abspath(TOKEN_FILE)}")
-    else:
-        print("✅ token.json já existe e está válido!")
+        print("🔐 Conectando ao Google Drive...")
+        
+        # Criar cliente do Drive
+        service = build('drive', 'v3', developerKey=API_KEY)
+        
+        # Testar listando arquivos da pasta
+        results = service.files().list(
+            q=f"'{FOLDER_ID}' in parents",
+            spaces='drive',
+            fields='files(id, name)',
+            pageSize=5
+        ).execute()
+        
+        files = results.get('files', [])
+        
+        print("✅ API Key funcionando!")
+        print(f"📄 Arquivos encontrados: {len(files)}")
+        
+        if files:
+            print("\n📋 Primeiros arquivos:")
+            for file in files:
+                print(f"   • {file['name']} (ID: {file['id']})")
+        
+        print()
+        print("=" * 50)
+        print("✅ Conexão com Google Drive OK!")
+        print("=" * 50)
+        
+        return True
+        
+    except Exception as e:
+        print()
+        print("=" * 50)
+        print(f"❌ Erro: {e}")
+        print("=" * 50)
+        print()
+        print("Verifique se:")
+        print("  • A API Key está correta")
+        print("  • Google Drive API está ativada")
+        print("  • O FOLDER_ID está correto")
+        print("  • A pasta está compartilhada publicamente")
+        return False
+
+
+def upload_arquivo(caminho_arquivo):
+    """Fazer upload de arquivo para Google Drive"""
+    
+    try:
+        service = build('drive', 'v3', developerKey=API_KEY)
+        
+        file_metadata = {
+            'name': os.path.basename(caminho_arquivo),
+            'parents': [FOLDER_ID]
+        }
+        
+        media = MediaFileUpload(caminho_arquivo)
+        
+        # Fazer upload
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webViewLink'
+        ).execute()
+        
+        print(f"✅ Arquivo enviado com sucesso!")
+        print(f"📄 Nome: {file_metadata['name']}")
+        print(f"🔗 Link: {file['webViewLink']}")
+        
+        return file['id']
+        
+    except Exception as e:
+        print(f"❌ Erro ao fazer upload: {e}")
+        return None
+
 
 if __name__ == "__main__":
-    try:
-        gerar_token()
-    except FileNotFoundError as e:
-        print(f"❌ Erro: {e}")
-        print(f"Certifique-se de que o arquivo '{CREDENTIALS_FILE}' existe no diretório atual.")
-    except Exception as e:
-        print(f"❌ Erro ao gerar token: {e}")
+    print()
+    
+    # Testar conexão
+    if testar_api_key():
+        print("\n✅ Tudo pronto para usar!")
+        print("\nPara fazer upload de um arquivo, use:")
+        print("  upload_arquivo('caminho/do/arquivo.pdf')")
+    else:
+        print("\n❌ Erro na autenticação")

@@ -1,60 +1,27 @@
 """
 Serviço para integração com Google Drive
 Realiza upload de arquivos e cria pastas
-Usa OAuth 2.0 (autenticação do usuário) ao invés de Service Account
+✅ ATUALIZADO: Usa API Key (simples) ao invés de OAuth
 """
 
 import os
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# Caminhos dos arquivos de credenciais
-BASE_DIR = os.path.dirname(__file__)
-CREDENTIALS_FILE = os.path.join(BASE_DIR, '..', 'credencials.json')  # OAuth client secrets
-TOKEN_FILE = os.path.join(BASE_DIR, '..', 'token.json')              # Token do usuário autenticado
-
-SCOPES = ['https://www.googleapis.com/auth/drive']
+# ✅ API KEY do Google Cloud
+API_KEY = "AIzaSyD1XxTV5p6SDm5-WkEPmh05XVtM1nEFrxY"
 
 # ID da pasta raiz onde salvar os lançamentos
 # https://drive.google.com/drive/folders/123C6ItHLqoRnb_hNNHRwE7FczSh9yhun
 ROOT_FOLDER_ID = "123C6ItHLqoRnb_hNNHRwE7FczSh9yhun"
 
 
-def get_credentials():
-    """
-    Obtém credenciais OAuth do usuário.
-    Se não existir token ou estiver expirado, abre o navegador para login.
-    """
-    creds = None
-
-    # Verifica se já existe um token salvo
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-    # Se não há credenciais válidas, faz o fluxo de autenticação
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-
-        # Salva o token para próximas execuções
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
-
-    return creds
-
-
 def get_drive_service():
-    """Retorna um cliente autenticado do Google Drive usando OAuth"""
-    credentials = get_credentials()
-    return build('drive', 'v3', credentials=credentials)
+    """
+    Retorna um cliente do Google Drive usando API Key
+    ✅ Simples e direto - sem OAuth, sem tokens!
+    """
+    return build('drive', 'v3', developerKey=API_KEY)
 
 
 def create_folder(folder_name, parent_id=ROOT_FOLDER_ID):
@@ -200,36 +167,36 @@ def get_file_link(file_id):
         file_id: ID do arquivo no Google Drive
     
     Returns:
-        URL de visualização do arquivo
+        Link do arquivo
     """
-    service = get_drive_service()
-    
-    file = service.files().get(
-        fileId=file_id,
-        fields='webViewLink'
-    ).execute()
-    
-    return file.get('webViewLink')
+    return f"https://drive.google.com/file/d/{file_id}/view"
 
 
-def share_file_with_user(file_id, user_email):
+def test_connection():
     """
-    Compartilha um arquivo com um usuário específico
+    Testa a conexão com o Google Drive
     
-    Args:
-        file_id: ID do arquivo no Google Drive
-        user_email: Email do usuário para compartilhar
+    Returns:
+        True se conectado, False se falhou
     """
-    service = get_drive_service()
-    
-    permission = {
-        'type': 'user',
-        'role': 'reader',
-        'emailAddress': user_email
-    }
-    
-    service.permissions().create(
-        fileId=file_id,
-        body=permission,
-        fields='id'
-    ).execute()
+    try:
+        service = get_drive_service()
+        
+        # Testar listando arquivos da pasta raiz
+        results = service.files().list(
+            q=f"'{ROOT_FOLDER_ID}' in parents",
+            spaces='drive',
+            fields='files(id, name)',
+            pageSize=5
+        ).execute()
+        
+        files = results.get('files', [])
+        print(f"✅ Conexão com Google Drive OK!")
+        print(f"📁 Pasta raiz: {ROOT_FOLDER_ID}")
+        print(f"📄 Arquivos encontrados: {len(files)}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erro na conexão: {e}")
+        return False
