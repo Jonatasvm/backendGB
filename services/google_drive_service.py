@@ -1,36 +1,55 @@
 """
 Serviço para integração com Google Drive
-Realiza upload de arquivos e cria pastas
-✅ ATUALIZADO: Usa API Key (simples) ao invés de OAuth
+✅ ATUALIZADO: Usa OAuth 2.0 (autenticação do usuário)
+
+O token.json deve estar na pasta para funcionar!
+Execute gerar_token.py uma única vez para gerar o token.
 """
 
 import os
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+import json
 
-# ✅ API KEY do Google Cloud
-API_KEY = "AIzaSyD1XxTV5p6SDm5-WkEPmh05XVtM1nEFrxY"
+# ✅ CONFIGURAÇÕES
+TOKEN_FILE = 'token.json'
+FOLDER_ID = "1dq7j5MgtyXToCTnQ3F6WeSRhRLuH1W7K"
 
-# ID da pasta raiz onde salvar os lançamentos
-# https://drive.google.com/drive/folders/123C6ItHLqoRnb_hNNHRwE7FczSh9yhun
-ROOT_FOLDER_ID = "123C6ItHLqoRnb_hNNHRwE7FczSh9yhun"
+SCOPES = ['https://www.googleapis.com/auth/drive']
+
+
+def get_credentials():
+    """Carrega credenciais do arquivo token.json"""
+    if not os.path.exists(TOKEN_FILE):
+        raise FileNotFoundError(
+            f"❌ Arquivo {TOKEN_FILE} não encontrado!\n"
+            f"Execute: python gerar_token.py"
+        )
+    
+    creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    
+    # Refresh se expirado
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    
+    return creds
 
 
 def get_drive_service():
-    """
-    Retorna um cliente do Google Drive usando API Key
-    ✅ Simples e direto - sem OAuth, sem tokens!
-    """
-    return build('drive', 'v3', developerKey=API_KEY)
+    """Retorna cliente do Google Drive autenticado com OAuth"""
+    credentials = get_credentials()
+    return build('drive', 'v3', credentials=credentials)
 
 
-def create_folder(folder_name, parent_id=ROOT_FOLDER_ID):
+def create_folder(folder_name, parent_id=FOLDER_ID):
     """
     Cria uma pasta no Google Drive
     
     Args:
-        folder_name: Nome da pasta a criar
-        parent_id: ID da pasta pai (default é a raiz)
+        folder_name: Nome da pasta
+        parent_id: ID da pasta pai
     
     Returns:
         ID da pasta criada
@@ -53,7 +72,7 @@ def create_folder(folder_name, parent_id=ROOT_FOLDER_ID):
 
 def upload_file_to_drive(file_obj, filename, folder_id):
     """
-    Faz upload de um arquivo para o Google Drive
+    Faz upload de um arquivo para Google Drive
     
     Args:
         file_obj: Objeto de arquivo (FileStorage do Flask)
@@ -61,10 +80,8 @@ def upload_file_to_drive(file_obj, filename, folder_id):
         folder_id: ID da pasta destino
     
     Returns:
-        Dict com 'id' e 'webViewLink' do arquivo
+        Dict com 'id', 'webViewLink' e 'name'
     """
-    from googleapiclient.http import MediaIoBaseUpload
-    
     service = get_drive_service()
     
     file_metadata = {
@@ -72,18 +89,18 @@ def upload_file_to_drive(file_obj, filename, folder_id):
         'parents': [folder_id]
     }
     
-    # Detectar o MIME type baseado na extensão
+    # Detectar MIME type
     import mimetypes
     mimetype, _ = mimetypes.guess_type(filename)
     if mimetype is None:
         mimetype = 'application/octet-stream'
     
-    # Usar MediaIoBaseUpload para arquivos do Flask (FileStorage)
+    # Upload com MediaIoBaseUpload para arquivos do Flask
     media = MediaIoBaseUpload(
         file_obj.stream,
         mimetype=mimetype,
         resumable=True,
-        chunksize=1024 * 1024  # 1MB chunks
+        chunksize=1024 * 1024
     )
     
     file_obj_drive = service.files().create(
@@ -94,7 +111,7 @@ def upload_file_to_drive(file_obj, filename, folder_id):
     
     file_id = file_obj_drive.get('id')
     
-    # Tornar o arquivo público (qualquer pessoa com o link pode ver/baixar)
+    # Tornar público
     try:
         service.permissions().create(
             fileId=file_id,
@@ -105,7 +122,7 @@ def upload_file_to_drive(file_obj, filename, folder_id):
         ).execute()
         print(f"[DEBUG] Arquivo {filename} tornado público")
     except Exception as e:
-        print(f"[AVISO] Não foi possível tornar o arquivo público: {e}")
+        print(f"[AVISO] Não foi possível tornar público: {e}")
     
     return {
         'id': file_id,
@@ -116,19 +133,18 @@ def upload_file_to_drive(file_obj, filename, folder_id):
 
 def upload_files_batch(files, form_id, obra_id):
     """
-    Realiza upload de múltiplos arquivos para o Google Drive
-    Cria uma pasta específica para o lançamento
+    Realiza upload de múltiplos arquivos para Google Drive
     
     Args:
-        files: Lista de objetos FileStorage do Flask
-        form_id: ID do formulário (lançamento)
+        files: Lista de objetos FileStorage
+        form_id: ID do formulário
         obra_id: ID da obra
     
     Returns:
-        Lista de dicts com links dos arquivos upados
+        Lista de dicts com links dos arquivos
     """
     try:
-        # Criar pasta para este lançamento
+        # Criar pasta para o lançamento
         folder_name = f"Lançamento_{form_id}_Obra_{obra_id}"
         print(f"[DEBUG] Criando pasta: {folder_name}")
         folder_id = create_folder(folder_name)
@@ -141,6 +157,7 @@ def upload_files_batch(files, form_id, obra_id):
                 print(f"[DEBUG] Fazendo upload do arquivo {idx + 1}: {file.filename}")
                 result = upload_file_to_drive(file, file.filename, folder_id)
                 file_id = result['id']
+                
                 upload_links.append({
                     'name': result['name'],
                     'link': result['webViewLink'],
@@ -153,38 +170,19 @@ def upload_files_batch(files, form_id, obra_id):
         return upload_links
     
     except Exception as e:
-        print(f"[ERRO] Erro ao fazer upload para Google Drive: {str(e)}")
+        print(f"[ERRO] Erro ao fazer upload: {str(e)}")
         import traceback
         traceback.print_exc()
         raise
 
 
-def get_file_link(file_id):
-    """
-    Retorna o link compartilhável de um arquivo
-    
-    Args:
-        file_id: ID do arquivo no Google Drive
-    
-    Returns:
-        Link do arquivo
-    """
-    return f"https://drive.google.com/file/d/{file_id}/view"
-
-
 def test_connection():
-    """
-    Testa a conexão com o Google Drive
-    
-    Returns:
-        True se conectado, False se falhou
-    """
+    """Testa a conexão com Google Drive"""
     try:
         service = get_drive_service()
         
-        # Testar listando arquivos da pasta raiz
         results = service.files().list(
-            q=f"'{ROOT_FOLDER_ID}' in parents",
+            q=f"'{FOLDER_ID}' in parents",
             spaces='drive',
             fields='files(id, name)',
             pageSize=5
@@ -192,7 +190,7 @@ def test_connection():
         
         files = results.get('files', [])
         print(f"✅ Conexão com Google Drive OK!")
-        print(f"📁 Pasta raiz: {ROOT_FOLDER_ID}")
+        print(f"📁 Pasta raiz: {FOLDER_ID}")
         print(f"📄 Arquivos encontrados: {len(files)}")
         
         return True
