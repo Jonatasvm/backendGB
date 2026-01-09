@@ -6,6 +6,7 @@ from routes.auth_routes import auth_bp
 from routes.obras_routes import obras_bp
 from routes.usuarios_routes import usuarios_bp
 from routes.formulario_routes import formulario_bp
+from routes.banks_routes import bancos_bp
 
 def create_app():
     app = Flask(__name__)
@@ -18,6 +19,7 @@ def create_app():
     app.register_blueprint(obras_bp)
     app.register_blueprint(usuarios_bp)
     app.register_blueprint(formulario_bp)
+    app.register_blueprint(bancos_bp)
 
     return app
 
