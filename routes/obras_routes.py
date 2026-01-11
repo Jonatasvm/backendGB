@@ -48,12 +48,13 @@ def criar():
     data = request.get_json()
     nome = data.get("nome")
     quem_paga = data.get("quem_paga")
-    user_id = data.get("user_id") 
+    user_id = data.get("user_id")
+    banco_id = data.get("banco_id")  # ✅ NOVO: Aceitar banco_id
 
     if not nome or not quem_paga:
         return jsonify({"error": "Nome e o campo 'Quem Paga' são obrigatórios"}), 400
 
-    obra, error = criar_obra(nome, user_id, quem_paga)
+    obra, error = criar_obra(nome, user_id, quem_paga, banco_id)
     
     if error:
         return jsonify({"error": error}), 409
@@ -90,11 +91,12 @@ def atualizar(obra_id):
     data = request.get_json()
     novo_nome = data.get("nome")
     novo_quem_paga = data.get("quem_paga")
+    banco_id = data.get("banco_id")  # ✅ NOVO: Aceitar banco_id
 
     if not novo_nome or not novo_quem_paga:
         return jsonify({"error": "Campos obrigatórios faltando"}), 400
 
-    obra, error = atualizar_obra(obra_id, novo_nome, novo_quem_paga)
+    obra, error = atualizar_obra(obra_id, novo_nome, novo_quem_paga, banco_id)
 
     if error:
         return jsonify({"error": error}), 404

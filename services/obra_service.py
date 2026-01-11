@@ -1,7 +1,7 @@
 from db import get_connection
 from flask import jsonify # Adicionado para garantir que jsonify está disponível se necessário, embora não seja estritamente necessário aqui.
 
-def criar_obra(nome, user_id, quem_paga):
+def criar_obra(nome, user_id, quem_paga, banco_id=None):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -13,8 +13,8 @@ def criar_obra(nome, user_id, quem_paga):
         conn.close()
         return None, "Obra já existe"
 
-    # 2. Cria a Obra
-    cursor.execute("INSERT INTO obras (nome, quem_paga) VALUES (%s, %s)", (nome, quem_paga))
+    # 2. Cria a Obra (com banco_id)
+    cursor.execute("INSERT INTO obras (nome, quem_paga, banco_id) VALUES (%s, %s, %s)", (nome, quem_paga, banco_id))
     conn.commit()
     obra_id = cursor.lastrowid
 
@@ -33,7 +33,7 @@ def criar_obra(nome, user_id, quem_paga):
     cursor.close()
     conn.close()
     
-    return {"id": obra_id, "nome": nome, "quem_paga": quem_paga}, None
+    return {"id": obra_id, "nome": nome, "quem_paga": quem_paga, "banco_id": banco_id}, None
 
 def listar_obras():
     conn = get_connection()
@@ -44,7 +44,7 @@ def listar_obras():
     conn.close()
     return obras
 
-def atualizar_obra(obra_id, novo_nome, novo_quem_paga):
+def atualizar_obra(obra_id, novo_nome, novo_quem_paga, banco_id=None):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
@@ -57,12 +57,12 @@ def atualizar_obra(obra_id, novo_nome, novo_quem_paga):
         conn.close()
         return None, "Obra não encontrada"
 
-    # 2. Atualiza Nome e Quem Paga
+    # 2. Atualiza Nome, Quem Paga e Banco
     cursor.execute("""
         UPDATE obras 
-        SET nome = %s, quem_paga = %s 
+        SET nome = %s, quem_paga = %s, banco_id = %s 
         WHERE id = %s
-    """, (novo_nome, novo_quem_paga, obra_id))
+    """, (novo_nome, novo_quem_paga, banco_id, obra_id))
     conn.commit()
 
     # 3. Retorna atualizado
@@ -78,7 +78,7 @@ def buscar_obra_por_id(obra_id):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT id, nome, quem_paga FROM obras WHERE id = %s", (obra_id,))
+        cursor.execute("SELECT id, nome, quem_paga, banco_id FROM obras WHERE id = %s", (obra_id,))
         obra = cursor.fetchone()
         return obra
     except Exception as e:
