@@ -21,3 +21,18 @@ CREATE INDEX idx_bancos_nome ON `bancos`(`nome`);
 -- ('Santander'),
 -- ('Bradesco')
 -- ON DUPLICATE KEY UPDATE nome=nome;
+
+-- =====================================================
+-- Migration: Add conta column to formulario table
+-- =====================================================
+-- Add conta (bank/account) column to formulario table if it doesn't exist
+-- This column will store the bank ID (foreign key to bancos table)
+ALTER TABLE `formulario` ADD COLUMN IF NOT EXISTS `conta` INT DEFAULT NULL;
+
+-- Add foreign key constraint to bancos table (optional but recommended)
+-- Uncomment if you want to enforce referential integrity
+-- ALTER TABLE `formulario` ADD CONSTRAINT `fk_formulario_conta` 
+-- FOREIGN KEY (`conta`) REFERENCES `bancos`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Create index on conta for faster searches
+CREATE INDEX IF NOT EXISTS idx_formulario_conta ON `formulario`(`conta`);
