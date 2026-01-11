@@ -120,7 +120,7 @@ def listar_obras_por_usuario(user_id):
     try:
         # Este SQL faz a mágica: une a tabela de obras com a tabela de permissões
         query = """
-            SELECT o.id, o.nome, o.quem_paga
+            SELECT o.id, o.nome, o.quem_paga, o.banco_id
             FROM obras o
             JOIN users_obras uo ON o.id = uo.obra_id
             WHERE uo.user_id = %s
