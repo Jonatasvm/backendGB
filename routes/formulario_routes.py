@@ -99,8 +99,8 @@ def criar_formulario():
         INSERT INTO formulario (
             data_lancamento, solicitante, titular, referente, valor, obra, 
             data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-            data_competencia, carimbo, observacao, conta, quem_paga
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+            data_competencia, carimbo, observacao, conta
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s)
     """, (
         data["data_lancamento"], 
         data["solicitante"], 
@@ -115,8 +115,7 @@ def criar_formulario():
         data["chave_pix"], 
         data["data_competencia"],
         data["observacao"],
-        data.get("conta"),  # ✅ NOVO: Adiciona conta (opcional)
-        data.get("quem_paga")  # ✅ NOVO: Adiciona quem_paga (opcional)
+        data.get("conta")  # ✅ NOVO: Adiciona conta (opcional)
     ))
     conn.commit()
     formulario_id = cursor.lastrowid
@@ -140,7 +139,7 @@ def atualizar_formulario(form_id):
         "data_lancamento", "solicitante", "titular", "referente",
         "valor", "obra", "data_pagamento", "forma_pagamento",
         "lancado", "cpf_cnpj", "chave_pix", "data_competencia",
-        "observacao", "conta", "quem_paga", "link_anexo", "categoria" # Incluídos campos opcionais
+        "observacao", "conta", "link_anexo", "categoria" # Incluídos campos opcionais
     ]
 
     # Atualiza apenas os campos enviados
