@@ -6,8 +6,7 @@ import json
 
 formulario_bp = Blueprint("formulario", __name__)
 
-# ===========================
-# BUSCAR TITULARES PARA AUTOCOMPLETE (GET)
+# BUSCAR FORNECEDORES PARA AUTOCOMPLETE (GET)
 # ===========================
 @formulario_bp.route("/formulario/titulares/search", methods=["GET", "OPTIONS"])
 @cross_origin()
@@ -22,25 +21,23 @@ def buscar_titulares():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # Consulta para buscar pares distintos de titular e cpf_cnpj que começam com a query
-    # Usamos GROUP BY para obter o efeito de DISTINCT em ambas as colunas
+    # Consulta a tabela 'fornecedor' em vez de 'formulario'
     sql_query = """
-        SELECT titular, cpf_cnpj 
-        FROM formulario 
+        SELECT id, titular, cpf_cnpj 
+        FROM fornecedor 
         WHERE titular LIKE %s 
-        GROUP BY titular, cpf_cnpj
+        ORDER BY titular ASC
         LIMIT 10
     """
     
-    # Adicionamos '%' ao final da query para buscar por "começa com"
     search_term = query + "%"
     
     try:
         cursor.execute(sql_query, (search_term,))
-        titulares = cursor.fetchall()
-        return jsonify(titulares), 200
+        fornecedores = cursor.fetchall()
+        return jsonify(fornecedores), 200
     except Exception as e:
-        print(f"Erro ao buscar titulares: {e}")
+        print(f"Erro ao buscar fornecedores: {e}")
         return jsonify({"error": "Erro interno do servidor"}), 500
     finally:
         cursor.close()

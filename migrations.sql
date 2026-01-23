@@ -36,3 +36,20 @@ ALTER TABLE `formulario` ADD COLUMN IF NOT EXISTS `conta` INT DEFAULT NULL;
 
 -- Create index on conta for faster searches
 CREATE INDEX IF NOT EXISTS idx_formulario_conta ON `formulario`(`conta`);
+
+-- =====================================================
+-- Migration: Create fornecedor table
+-- =====================================================
+CREATE TABLE IF NOT EXISTS `fornecedor` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `titular` VARCHAR(255) NOT NULL,
+  `cpf_cnpj` VARCHAR(20) NOT NULL UNIQUE,
+  `chave_pix` VARCHAR(255),
+  `banco_padrao` VARCHAR(255),
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create indexes for faster searches
+CREATE INDEX idx_fornecedor_titular ON `fornecedor`(`titular`);
+CREATE INDEX idx_fornecedor_cpf_cnpj ON `fornecedor`(`cpf_cnpj`);
