@@ -2,9 +2,38 @@ from flask import Blueprint, request, send_file, jsonify
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 
 export_bp = Blueprint('export', __name__)
+
+def normalize_forma_pagamento(forma_pagamento):
+    """
+    Normaliza a forma de pagamento para Título Case.
+    PIX -> Pix, BOLETO -> Boleto, CHEQUE -> Cheque
+    """
+    if not forma_pagamento:
+        return ''
+    
+    mapa_normalizacao = {
+        'PIX': 'Pix',
+        'BOLETO': 'Boleto',
+        'CHEQUE': 'Cheque',
+        'pix': 'Pix',
+        'boleto': 'Boleto',
+        'cheque': 'Cheque',
+    }
+    
+    return mapa_normalizacao.get(forma_pagamento.strip(), forma_pagamento)
+
+def normalize_text_field(text):
+    """
+    Normaliza um texto para Título Case (primeira letra maiúscula).
+    """
+    if not text:
+        return ''
+    
+    text = str(text).strip()
+    return text[0].upper() + text[1:].lower() if len(text) > 0 else ''
 
 @export_bp.route('/api/export/xls', methods=['POST'])
 def export_xls():
@@ -18,7 +47,7 @@ def export_xls():
         # Criar workbook e worksheet
         wb = Workbook()
         ws = wb.active
-        ws.title = "Pagamentos"
+        ws.title = "Planilha de Importação"
 
         # Definir cabeçalhos (baseado nos campos do seu formulário)
         headers = [
@@ -26,8 +55,11 @@ def export_xls():
             'Data Pagamento',
             'Valor',
             'Forma de Pagamento',
+            'Quem Paga',
+            'Centro de Custo',
             'Titular',
             'CPF/CNPJ',
+            'Chave Pix',
             'Obra',
             'Status Lançamento',
             'Observação'
@@ -62,26 +94,52 @@ def export_xls():
             # Status lançamento
             status = "Lançado" if registro.get('statusLancamento') else "Pendente"
 
+            # ✅ CORREÇÃO DE DATA: Adicionar 1 dia para compensar diferença
+            data_pagamento_raw = registro.get('dataPagamento', '')
+            data_pagamento_corrigida = ''
+            if data_pagamento_raw:
+                try:
+                    from datetime import datetime as dt
+                    data_obj = dt.strptime(str(data_pagamento_raw), '%Y-%m-%d')
+                    data_corrigida = data_obj + timedelta(days=1)
+                    data_pagamento_corrigida = data_corrigida.strftime('%Y-%m-%d')
+                except:
+                    data_pagamento_corrigida = data_pagamento_raw
+
+            # ✅ NORMALIZAÇÃO: Forma de Pagamento
+            forma_pagamento_normalizada = normalize_forma_pagamento(registro.get('formaDePagamento', ''))
+            
+            # ✅ NORMALIZAÇÃO: Quem Paga (converter para "Empresa" com primeira letra maiúscula)
+            quem_paga_raw = registro.get('quemPaga', '')
+            quem_paga_normalizado = normalize_text_field('Empresa') if quem_paga_raw else ''
+            
+            # ✅ NORMALIZAÇÃO: Obra (Centro de Custo) - converter ID para nome ou aplicar título case
+            obra_raw = registro.get('obra', '')
+            obra_normalizada = normalize_text_field(str(obra_raw)) if obra_raw else ''
+
             row = [
                 registro.get('id', ''),
-                registro.get('dataPagamento', ''),
+                data_pagamento_corrigida,
                 valor_formatado,
-                registro.get('formaDePagamento', ''),
+                forma_pagamento_normalizada,
+                quem_paga_normalizado,
+                obra_normalizada,
                 registro.get('titular', ''),
                 registro.get('cpfCnpjTitularConta', ''),
+                registro.get('chavePix', ''),
                 registro.get('obra', ''),
                 status,
                 registro.get('observacao', '')
             ]
             ws.append(row)
 
-        # Formatar coluna de valor como moeda
+        # Formatar coluna de valor - sem símbolo de moeda, apenas número
         for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
             for cell in row:
-                cell.number_format = 'R$ #,##0.00'
+                cell.number_format = '0.00'
 
         # Ajustar largura das colunas
-        column_widths = [8, 15, 15, 20, 30, 20, 25, 15, 40]
+        column_widths = [8, 15, 15, 20, 15, 18, 30, 20, 20, 25, 15, 40]
         for i, width in enumerate(column_widths, 1):
             col_letter = chr(64 + i) if i <= 26 else 'A' + chr(64 + i - 26)
             ws.column_dimensions[col_letter].width = width
