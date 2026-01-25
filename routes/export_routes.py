@@ -14,16 +14,18 @@ def normalize_forma_pagamento(forma_pagamento):
     if not forma_pagamento:
         return ''
     
-    mapa_normalizacao = {
-        'PIX': 'Pix',
-        'BOLETO': 'Boleto',
-        'CHEQUE': 'Cheque',
-        'pix': 'Pix',
-        'boleto': 'Boleto',
-        'cheque': 'Cheque',
-    }
+    # Converter para maiúsculas e remover espaços
+    forma_upper = str(forma_pagamento).strip().upper()
     
-    return mapa_normalizacao.get(forma_pagamento.strip(), forma_pagamento)
+    if forma_upper == 'PIX':
+        return 'Pix'
+    elif forma_upper == 'BOLETO':
+        return 'Boleto'
+    elif forma_upper == 'CHEQUE':
+        return 'Cheque'
+    else:
+        # Se não reconhecer, retornar com primeira letra maiúscula
+        return str(forma_pagamento).strip().capitalize() if forma_pagamento else ''
 
 def normalize_text_field(text):
     """
@@ -107,11 +109,11 @@ def export_xls():
                     data_pagamento_corrigida = data_pagamento_raw
 
             # ✅ NORMALIZAÇÃO: Forma de Pagamento (Boleto, Pix, Cheque - com primeira letra maiúscula)
-            forma_pagamento = registro.get('formaDePagamento') or registro.get('forma_pagamento', '')
+            forma_pagamento = registro.get('forma_pagamento', '')
             forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
             
-            # ✅ NORMALIZAÇÃO: Quem Paga - "Empresa" com primeira letra maiúscula
-            quem_paga_normalizado = 'Empresa' if registro.get('quemPaga') else ''
+            # ✅ NORMALIZAÇÃO: Quem Paga - "Empresa" (com E maiúsculo)
+            quem_paga_normalizado = 'Empresa'
             
             # ✅ NORMALIZAÇÃO: Centro de Custo (Obra) - primeira letra maiúscula
             obra_raw = registro.get('obra', '')
@@ -155,7 +157,7 @@ def export_xls():
         output.seek(0)
 
         # Gerar nome do arquivo com data
-        filename = f"pagamentos_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+        filename = f"Planilha de Importação_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
 
         return send_file(
             output,
