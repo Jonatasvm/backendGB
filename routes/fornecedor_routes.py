@@ -23,6 +23,36 @@ def listar_fornecedores():
 
 
 # ===========================
+# BUSCAR FORNECEDOR POR CPF/CNPJ (GET)
+# ===========================
+@fornecedor_bp.route("/fornecedor/cpf/<cpf_cnpj>", methods=["GET", "OPTIONS"])
+@cross_origin()
+def buscar_fornecedor_por_cpf(cpf_cnpj):
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Remove caracteres especiais para busca
+    cpf_cnpj_limpo = ''.join(filter(str.isdigit, cpf_cnpj))
+    
+    # Busca exatamente pelo CPF/CNPJ
+    cursor.execute(
+        "SELECT * FROM fornecedor WHERE REPLACE(REPLACE(REPLACE(cpf_cnpj, '.', ''), '/', ''), '-', '') = %s",
+        (cpf_cnpj_limpo,)
+    )
+    fornecedor = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if not fornecedor:
+        return jsonify({"error": "Fornecedor não encontrado"}), 404
+    
+    return jsonify(fornecedor), 200
+
+
+# ===========================
 # BUSCAR FORNECEDOR POR ID (GET)
 # ===========================
 @fornecedor_bp.route("/fornecedor/<int:fornecedor_id>", methods=["GET", "OPTIONS"])
@@ -59,6 +89,11 @@ def criar_fornecedor():
     if not data.get("titular") or not data.get("cpf_cnpj"):
         return jsonify({"error": "Campos 'titular' e 'cpf_cnpj' são obrigatórios"}), 400
 
+    # Validação de CPF/CNPJ vazio
+    cpf_cnpj = str(data.get("cpf_cnpj")).strip()
+    if not cpf_cnpj:
+        return jsonify({"error": "CPF/CNPJ não pode estar vazio"}), 400
+
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -67,30 +102,34 @@ def criar_fornecedor():
             INSERT INTO fornecedor (titular, cpf_cnpj, chave_pix, banco_padrao)
             VALUES (%s, %s, %s, %s)
         """, (
-            data["titular"],
-            data["cpf_cnpj"],
-            data.get("chave_pix"),
-            data.get("banco_padrao")
+            data["titular"].strip(),
+            cpf_cnpj,
+            data.get("chave_pix", "").strip(),
+            data.get("banco_padrao") if data.get("banco_padrao") else None
         ))
         conn.commit()
         fornecedor_id = cursor.lastrowid
+        
         cursor.close()
         conn.close()
         
         return jsonify({
             "message": "Fornecedor criado com sucesso",
-            "id": fornecedor_id
+            "id": fornecedor_id,
+            "titular": data["titular"].strip(),
+            "cpf_cnpj": cpf_cnpj
         }), 201
     except Exception as e:
         conn.rollback()
         cursor.close()
         conn.close()
         
-        if "Duplicate entry" in str(e):
+        error_str = str(e).lower()
+        if "duplicate" in error_str or "unique" in error_str:
             return jsonify({"error": "CPF/CNPJ já cadastrado"}), 409
         
         print(f"Erro ao criar fornecedor: {e}")
-        return jsonify({"error": "Erro interno do servidor"}), 500
+        return jsonify({"error": f"Erro ao criar fornecedor: {str(e)}"}), 500
 
 
 # ===========================
