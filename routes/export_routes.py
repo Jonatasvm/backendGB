@@ -45,6 +45,12 @@ def export_xls():
 
         if not registros:
             return jsonify({'error': 'Nenhum registro selecionado'}), 400
+        
+        # DEBUG: Imprimir as chaves do primeiro registro
+        if registros:
+            print(f"[DEBUG] Chaves do primeiro registro: {list(registros[0].keys())}")
+            print(f"[DEBUG] Valor de 'forma_pagamento': {registros[0].get('forma_pagamento')}")
+            print(f"[DEBUG] Valor de 'formaDePagamento': {registros[0].get('formaDePagamento')}")
 
         # Criar workbook e worksheet
         wb = Workbook()
