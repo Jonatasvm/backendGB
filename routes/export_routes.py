@@ -109,7 +109,7 @@ def export_xls():
                     data_pagamento_corrigida = data_pagamento_raw
 
             # ✅ NORMALIZAÇÃO: Forma de Pagamento (Boleto, Pix, Cheque - com primeira letra maiúscula)
-            forma_pagamento = registro.get('forma_pagamento', '')
+            forma_pagamento = registro.get('formaDePagamento', '')
             forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
             
             # ✅ NORMALIZAÇÃO: Quem Paga - "Empresa" (com E maiúsculo)
