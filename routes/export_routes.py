@@ -151,7 +151,7 @@ def export_xls():
             for cell in row:
                 cell.border = thin_border
 
-        # Salvar em memória
+        # Salvar em memóriaa
         output = BytesIO()
         wb.save(output)
         output.seek(0)
