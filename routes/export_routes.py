@@ -86,6 +86,9 @@ def export_xls():
 
         # Adicionar dados
         for registro in registros:
+            # DEBUG: Imprimir para entender os dados
+            print(f"DEBUG - Registro: {registro.get('forma_pagamento')} | {registro.get('quemPaga')} | {registro.get('obra')}")
+            
             # Formatar valor (centavos para reais) - SEM símbolo de moeda
             valor_raw = registro.get('valor', 0)
             try:
@@ -110,7 +113,9 @@ def export_xls():
 
             # ✅ NORMALIZAÇÃO: Forma de Pagamento (Boleto, Pix, Cheque - com primeira letra maiúscula)
             forma_pagamento = registro.get('forma_pagamento', '')
+            print(f"DEBUG - Forma antes da normalização: '{forma_pagamento}'")
             forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
+            print(f"DEBUG - Forma após normalização: '{forma_pagamento_normalizada}'")
             
             # ✅ NORMALIZAÇÃO: Quem Paga - "Empresa" (com E maiúsculo)
             quem_paga_normalizado = 'Empresa'
