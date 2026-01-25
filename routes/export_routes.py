@@ -84,7 +84,7 @@ def export_xls():
 
         # Adicionar dados
         for registro in registros:
-            # Formatar valor (centavos para reais)
+            # Formatar valor (centavos para reais) - SEM símbolo de moeda
             valor_raw = registro.get('valor', 0)
             try:
                 valor_formatado = float(valor_raw) / 100 if valor_raw else 0
@@ -92,7 +92,7 @@ def export_xls():
                 valor_formatado = 0
 
             # Status lançamento
-            status = "Lançado" if registro.get('statusLancamento') else "Pendente"
+            status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
             # ✅ CORREÇÃO DE DATA: Adicionar 1 dia para compensar diferença
             data_pagamento_raw = registro.get('dataPagamento', '')
@@ -106,14 +106,14 @@ def export_xls():
                 except:
                     data_pagamento_corrigida = data_pagamento_raw
 
-            # ✅ NORMALIZAÇÃO: Forma de Pagamento
-            forma_pagamento_normalizada = normalize_forma_pagamento(registro.get('formaDePagamento', ''))
+            # ✅ NORMALIZAÇÃO: Forma de Pagamento (Boleto, Pix, Cheque - com primeira letra maiúscula)
+            forma_pagamento = registro.get('formaDePagamento') or registro.get('forma_pagamento', '')
+            forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
             
-            # ✅ NORMALIZAÇÃO: Quem Paga (converter para "Empresa" com primeira letra maiúscula)
-            quem_paga_raw = registro.get('quemPaga', '')
-            quem_paga_normalizado = normalize_text_field('Empresa') if quem_paga_raw else ''
+            # ✅ NORMALIZAÇÃO: Quem Paga - "Empresa" com primeira letra maiúscula
+            quem_paga_normalizado = 'Empresa' if registro.get('quemPaga') else ''
             
-            # ✅ NORMALIZAÇÃO: Obra (Centro de Custo) - converter ID para nome ou aplicar título case
+            # ✅ NORMALIZAÇÃO: Centro de Custo (Obra) - primeira letra maiúscula
             obra_raw = registro.get('obra', '')
             obra_normalizada = normalize_text_field(str(obra_raw)) if obra_raw else ''
 
