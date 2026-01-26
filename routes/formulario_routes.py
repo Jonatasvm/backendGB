@@ -56,6 +56,19 @@ def listar_formularios():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM formulario ORDER BY id DESC")
     formularios = cursor.fetchall()
+    
+    # ✅ NOVO: Carregar obras adicionais para cada formulário com múltiplos lançamentos
+    for form in formularios:
+        if form.get("multiplos_lancamentos") == 1:
+            cursor.execute("""
+                SELECT fo.id, fo.obra_id, fo.valor, o.nome as obra_nome
+                FROM formulario_obras fo
+                LEFT JOIN obras o ON fo.obra_id = o.id
+                WHERE fo.formulario_id = %s
+                ORDER BY fo.id ASC
+            """, (form["id"],))
+            form["obras_adicionais"] = cursor.fetchall()
+    
     cursor.close()
     conn.close()
     return jsonify(formularios), 200
@@ -96,8 +109,8 @@ def criar_formulario():
         INSERT INTO formulario (
             data_lancamento, solicitante, titular, referente, valor, obra, 
             data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-            data_competencia, carimbo, observacao, conta, categoria
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+            data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
     """, (
         data["data_lancamento"], 
         data["solicitante"], 
@@ -113,10 +126,33 @@ def criar_formulario():
         data["data_competencia"],
         data["observacao"],
         data.get("conta"),  # ✅ NOVO: Adiciona conta (opcional)
-        data.get("categoria")  # ✅ NOVO: Adiciona categoria (opcional)
+        data.get("categoria"),  # ✅ NOVO: Adiciona categoria (opcional)
+        data.get("multiplos_lancamentos", 0)  # ✅ NOVO: Flag para múltiplos lançamentos
     ))
     conn.commit()
     formulario_id = cursor.lastrowid
+    
+    # ✅ NOVO: Salvar obras adicionais se for múltiplo lançamento
+    if data.get("multiplos_lancamentos") and data.get("obras_adicionais"):
+        obras_adicionais = data.get("obras_adicionais", [])
+        for obra_info in obras_adicionais:
+            obra_id = obra_info.get("obra_id")
+            valor = obra_info.get("valor", 0)
+            
+            # Converter valor de string formatada para float se necessário
+            if isinstance(valor, str):
+                valor = float(valor.replace("R$", "").replace(".", "").replace(",", "."))
+            
+            try:
+                cursor.execute("""
+                    INSERT INTO formulario_obras (formulario_id, obra_id, valor)
+                    VALUES (%s, %s, %s)
+                """, (formulario_id, obra_id, valor))
+                conn.commit()
+            except Exception as e:
+                print(f"Erro ao inserir obra adicional: {e}")
+                continue
+    
     cursor.close()
     conn.close()
     return jsonify({"message": "Formulário criado", "id": formulario_id}), 201
