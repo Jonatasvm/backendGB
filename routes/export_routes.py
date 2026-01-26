@@ -3,6 +3,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from io import BytesIO
 from datetime import datetime, timedelta
+from db import get_connection
 
 export_bp = Blueprint('export', __name__)
 
@@ -120,13 +121,20 @@ def export_xls():
             obra_raw = registro.get('obra', '')
             obra_normalizada = normalize_text_field(str(obra_raw)) if obra_raw else ''
 
-            # ✅ NOVO: Obter nome da categoria (por enquanto usando ID como fallback)
-            categoria_raw = registro.get('categoria')
+            # ✅ NOVO: Obter nome da categoria do banco de dados
             categoria_nome = ''
+            categoria_raw = registro.get('categoria')
             if categoria_raw:
-                # Se for número (ID), manter como está ou buscar do banco
-                # Por enquanto apenas convert para string
-                categoria_nome = str(categoria_raw) if categoria_raw else ''
+                try:
+                    conn = get_connection()
+                    cursor = conn.cursor(dictionary=True)
+                    cursor.execute("SELECT nome FROM categoria WHERE id = %s", (categoria_raw,))
+                    resultado = cursor.fetchone()
+                    cursor.close()
+                    conn.close()
+                    categoria_nome = resultado['nome'] if resultado else str(categoria_raw)
+                except:
+                    categoria_nome = str(categoria_raw)
 
             row = [
                 registro.get('id', ''),
