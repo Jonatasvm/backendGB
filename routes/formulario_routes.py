@@ -83,7 +83,7 @@ def criar_formulario():
     ]
     
     # Campos opcionais
-    campos_opcionais = ["conta", "quem_paga"]  # ✅ NOVO: Adicionados como opcionais
+    campos_opcionais = ["conta", "quem_paga", "categoria"]  # ✅ NOVO: Adicionados como opcionais
 
     # Validação simples
     for campo in campos:
@@ -96,8 +96,8 @@ def criar_formulario():
         INSERT INTO formulario (
             data_lancamento, solicitante, titular, referente, valor, obra, 
             data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-            data_competencia, carimbo, observacao, conta
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s)
+            data_competencia, carimbo, observacao, conta, categoria
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
     """, (
         data["data_lancamento"], 
         data["solicitante"], 
@@ -112,7 +112,8 @@ def criar_formulario():
         data["chave_pix"], 
         data["data_competencia"],
         data["observacao"],
-        data.get("conta")  # ✅ NOVO: Adiciona conta (opcional)
+        data.get("conta"),  # ✅ NOVO: Adiciona conta (opcional)
+        data.get("categoria")  # ✅ NOVO: Adiciona categoria (opcional)
     ))
     conn.commit()
     formulario_id = cursor.lastrowid

@@ -8,6 +8,7 @@ from routes.usuarios_routes import usuarios_bp
 from routes.formulario_routes import formulario_bp
 from routes.banks_routes import bancos_bp
 from routes.fornecedor_routes import fornecedor_bp
+from routes.categoria_routes import categoria_bp
 from routes.export_routes import export_bp
 
 def create_app():
@@ -23,6 +24,7 @@ def create_app():
     app.register_blueprint(formulario_bp)
     app.register_blueprint(bancos_bp)
     app.register_blueprint(fornecedor_bp)
+    app.register_blueprint(categoria_bp)
     app.register_blueprint(export_bp)
 
     return app

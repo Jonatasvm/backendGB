@@ -63,6 +63,7 @@ def export_xls():
             'CPF/CNPJ',
             'Chave Pix',
             'Obra',
+            'Categoria',
             'Status Lançamento',
             'Observação'
         ]
@@ -119,6 +120,14 @@ def export_xls():
             obra_raw = registro.get('obra', '')
             obra_normalizada = normalize_text_field(str(obra_raw)) if obra_raw else ''
 
+            # ✅ NOVO: Obter nome da categoria (por enquanto usando ID como fallback)
+            categoria_raw = registro.get('categoria')
+            categoria_nome = ''
+            if categoria_raw:
+                # Se for número (ID), manter como está ou buscar do banco
+                # Por enquanto apenas convert para string
+                categoria_nome = str(categoria_raw) if categoria_raw else ''
+
             row = [
                 registro.get('id', ''),
                 data_pagamento_corrigida,
@@ -130,6 +139,7 @@ def export_xls():
                 registro.get('cpfCnpjTitularConta', ''),
                 registro.get('chavePix', ''),
                 registro.get('obra', ''),
+                categoria_nome,
                 status,
                 registro.get('observacao', '')
             ]
@@ -141,7 +151,7 @@ def export_xls():
                 cell.number_format = '0.00'  # Apenas número, nenhum símbolo de moeda
 
         # Ajustar largura das colunas
-        column_widths = [8, 15, 15, 20, 15, 18, 30, 20, 20, 25, 15, 40]
+        column_widths = [8, 15, 15, 20, 15, 18, 30, 20, 20, 25, 20, 15, 40]
         for i, width in enumerate(column_widths, 1):
             col_letter = chr(64 + i) if i <= 26 else 'A' + chr(64 + i - 26)
             ws.column_dimensions[col_letter].width = width

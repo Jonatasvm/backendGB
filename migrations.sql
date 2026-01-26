@@ -53,3 +53,30 @@ CREATE TABLE IF NOT EXISTS `fornecedor` (
 -- Create indexes for faster searches
 CREATE INDEX idx_fornecedor_titular ON `fornecedor`(`titular`);
 CREATE INDEX idx_fornecedor_cpf_cnpj ON `fornecedor`(`cpf_cnpj`);
+
+-- =====================================================
+-- Migration: Create categoria table
+-- =====================================================
+CREATE TABLE IF NOT EXISTS `categoria` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `nome` VARCHAR(255) NOT NULL UNIQUE,
+  `descricao` VARCHAR(500),
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create index on nome for faster searches
+CREATE INDEX idx_categoria_nome ON `categoria`(`nome`);
+
+-- =====================================================
+-- Migration: Add categoria column to formulario table
+-- =====================================================
+ALTER TABLE `formulario` ADD COLUMN `categoria` INT DEFAULT NULL;
+
+-- Add foreign key constraint to categoria table (optional but recommended)
+-- Uncomment if you want to enforce referential integrity
+-- ALTER TABLE `formulario` ADD CONSTRAINT `fk_formulario_categoria` 
+-- FOREIGN KEY (`categoria`) REFERENCES `categoria`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Create index on categoria for faster searches
+CREATE INDEX idx_formulario_categoria ON `formulario`(`categoria`);
