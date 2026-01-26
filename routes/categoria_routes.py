@@ -8,7 +8,7 @@ from services.categoria_service import (
     buscar_categoria_por_id
 )
 
-categoria_bp = Blueprint("categoria", __name__)
+categoria_bp = Blueprint("categoria", __name__, url_prefix="")
 
 # =====================================================
 # LISTAR (GET)
@@ -55,7 +55,7 @@ def criar():
 
     data = request.get_json()
     nome = data.get("nome", "").strip()
-    descricao = data.get("descricao", "").strip()
+    descricao = (data.get("descricao") or "").strip()
 
     if not nome:
         return jsonify({"error": "Nome da categoria é obrigatório"}), 400
@@ -84,8 +84,8 @@ def atualizar(categoria_id):
         return jsonify({"status": "OK"}), 200
 
     data = request.get_json()
-    nome = data.get("nome", "").strip() if data.get("nome") else None
-    descricao = data.get("descricao", "").strip() if data.get("descricao") else None
+    nome = (data.get("nome") or "").strip() if data.get("nome") else None
+    descricao = (data.get("descricao") or "").strip() if data.get("descricao") else None
 
     try:
         categoria_id_result, erro = atualizar_categoria(categoria_id, nome, descricao)
