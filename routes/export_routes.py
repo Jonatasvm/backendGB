@@ -132,9 +132,9 @@ def export_xls():
                     resultado = cursor.fetchone()
                     cursor.close()
                     conn.close()
-                    categoria_nome = resultado['nome'] if resultado else str(categoria_raw)
+                    categoria_nome = resultado['nome'] if resultado else ''
                 except:
-                    categoria_nome = str(categoria_raw)
+                    categoria_nome = ''
 
             row = [
                 registro.get('id', ''),
@@ -157,6 +157,12 @@ def export_xls():
         for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
             for cell in row:
                 cell.number_format = '0.00'  # Apenas número, nenhum símbolo de moeda
+
+        # ✅ NOVO: Formatar colunas de data com tipo "Data Completa" (dd/mm/yyyy)
+        # Coluna B é Data Pagamento (coluna 2)
+        for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
+            for cell in row:
+                cell.number_format = 'dd/mm/yyyy'  # Formato de data completa
 
         # Ajustar largura das colunas
         column_widths = [8, 15, 15, 20, 15, 18, 30, 20, 20, 25, 20, 15, 40]
