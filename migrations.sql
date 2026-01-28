@@ -108,3 +108,12 @@ CREATE TABLE IF NOT EXISTS `formulario_obras` (
 -- Create indexes for faster searches
 CREATE INDEX idx_formulario_obras_formulario ON `formulario_obras`(`formulario_id`);
 CREATE INDEX idx_formulario_obras_obra ON `formulario_obras`(`obra_id`);
+
+-- =====================================================
+-- Migration: Add grupo_lancamento to formulario table
+-- =====================================================
+-- This column groups related lancamentos together (for multiple works)
+ALTER TABLE `formulario` ADD COLUMN IF NOT EXISTS `grupo_lancamento` VARCHAR(50) DEFAULT NULL;
+
+-- Create index for faster filtering
+CREATE INDEX IF NOT EXISTS idx_formulario_grupo ON `formulario`(`grupo_lancamento`);

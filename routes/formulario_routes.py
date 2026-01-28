@@ -57,18 +57,6 @@ def listar_formularios():
     cursor.execute("SELECT * FROM formulario ORDER BY id DESC")
     formularios = cursor.fetchall()
     
-    # ✅ NOVO: Carregar obras adicionais para cada formulário com múltiplos lançamentos
-    for form in formularios:
-        if form.get("multiplos_lancamentos") == 1:
-            cursor.execute("""
-                SELECT fo.id, fo.obra_id, fo.valor, o.nome as obra_nome
-                FROM formulario_obras fo
-                LEFT JOIN obras o ON fo.obra_id = o.id
-                WHERE fo.formulario_id = %s
-                ORDER BY fo.id ASC
-            """, (form["id"],))
-            form["obras_adicionais"] = cursor.fetchall()
-    
     cursor.close()
     conn.close()
     return jsonify(formularios), 200
@@ -105,12 +93,20 @@ def criar_formulario():
 
     conn = get_connection()
     cursor = conn.cursor()
+    
+    # ✅ Gerar grupo de lançamento único para múltiplas obras
+    grupo_lancamento = None
+    if data.get("multiplos_lancamentos") and data.get("obras_adicionais"):
+        import uuid
+        grupo_lancamento = str(uuid.uuid4())[:8]  # ID curto para agrupar
+    
+    # Inserir o lançamento principal
     cursor.execute("""
         INSERT INTO formulario (
             data_lancamento, solicitante, titular, referente, valor, obra, 
             data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-            data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
+            data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
     """, (
         data["data_lancamento"], 
         data["solicitante"], 
@@ -120,19 +116,20 @@ def criar_formulario():
         data["obra"], 
         data["data_pagamento"], 
         data["forma_pagamento"],
-        valor_lancado,  # <--- CORREÇÃO: Usa o valor de 'valor_lancado' (do payload ou default 'N')
+        valor_lancado,
         data["cpf_cnpj"], 
         data["chave_pix"], 
         data["data_competencia"],
         data["observacao"],
-        data.get("conta"),  # ✅ NOVO: Adiciona conta (opcional)
-        data.get("categoria"),  # ✅ NOVO: Adiciona categoria (opcional)
-        data.get("multiplos_lancamentos", 0)  # ✅ NOVO: Flag para múltiplos lançamentos
+        data.get("conta"),
+        data.get("categoria"),
+        data.get("multiplos_lancamentos", 0),
+        grupo_lancamento
     ))
     conn.commit()
     formulario_id = cursor.lastrowid
     
-    # ✅ NOVO: Salvar obras adicionais se for múltiplo lançamento
+    # ✅ NOVO: Criar lançamentos adicionais para cada obra selecionada
     if data.get("multiplos_lancamentos") and data.get("obras_adicionais"):
         obras_adicionais = data.get("obras_adicionais", [])
         for obra_info in obras_adicionais:
@@ -141,16 +138,43 @@ def criar_formulario():
             
             # Converter valor de string formatada para float se necessário
             if isinstance(valor, str):
-                valor = float(valor.replace("R$", "").replace(".", "").replace(",", "."))
+                valor_limpo = valor.replace("R$", "").replace(".", "").replace(",", ".").strip()
+                valor = float(valor_limpo) if valor_limpo else 0
+            
+            # Pular se o valor for 0 ou se for a obra principal (já criada)
+            if valor <= 0 or obra_id == data["obra"]:
+                continue
             
             try:
+                # Criar um lançamento separado para esta obra
                 cursor.execute("""
-                    INSERT INTO formulario_obras (formulario_id, obra_id, valor)
-                    VALUES (%s, %s, %s)
-                """, (formulario_id, obra_id, valor))
+                    INSERT INTO formulario (
+                        data_lancamento, solicitante, titular, referente, valor, obra, 
+                        data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
+                        data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
+                """, (
+                    data["data_lancamento"], 
+                    data["solicitante"], 
+                    data["titular"], 
+                    data["referente"],
+                    valor,  # Valor específico desta obra
+                    obra_id,  # ID da obra adicional
+                    data["data_pagamento"], 
+                    data["forma_pagamento"],
+                    valor_lancado,
+                    data["cpf_cnpj"], 
+                    data["chave_pix"], 
+                    data["data_competencia"],
+                    data["observacao"],
+                    data.get("conta"),
+                    data.get("categoria"),
+                    data.get("multiplos_lancamentos", 0),
+                    grupo_lancamento  # Mesmo grupo do lançamento principal
+                ))
                 conn.commit()
             except Exception as e:
-                print(f"Erro ao inserir obra adicional: {e}")
+                print(f"Erro ao inserir lançamento adicional para obra {obra_id}: {e}")
                 continue
     
     cursor.close()
