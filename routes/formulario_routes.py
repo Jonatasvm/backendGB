@@ -54,13 +54,24 @@ def listar_formularios():
 
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM formulario ORDER BY id DESC")
+    
+    # ✅ NOVO: Usar ROW_NUMBER para pegar apenas o PRIMEIRO lançamento de cada grupo
+    # Assim não duplica lançamentos múltiplos no dashboard
+    cursor.execute("""
+        SELECT f.* FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY COALESCE(grupo_lancamento, CONCAT('individual_', id)) ORDER BY id ASC) as rn
+            FROM formulario
+        ) f
+        WHERE f.rn = 1
+        ORDER BY f.id DESC
+    """)
     formularios = cursor.fetchall()
     
-    # ✅ NOVO: Carregar obras adicionais para cada lançamento com grupo_lancamento
+    # ✅ NOVO: Carregar obras relacionadas para cada lançamento com grupo_lancamento
     for form in formularios:
         if form.get("grupo_lancamento"):
-            # Buscar todos os lançamentos do mesmo grupo (exceto o atual)
+            # Buscar todos os lançamentos do mesmo grupo (exceto o primeiro/principal)
             cursor.execute("""
                 SELECT id, obra, valor, referente, data_pagamento, forma_pagamento
                 FROM formulario
