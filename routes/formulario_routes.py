@@ -144,6 +144,15 @@ def criar_formulario():
         return jsonify({"status": "OK"}), 200
 
     data = request.get_json()
+    
+    # ✅ DEBUG: Log do payload recebido
+    print("\n" + "="*60)
+    print("📥 POST /formulario - Payload recebido:")
+    print(f"  multiplos_lancamentos: {data.get('multiplos_lancamentos')}")
+    print(f"  obras_adicionais: {data.get('obras_adicionais')}")
+    print(f"  obra (principal): {data.get('obra')}")
+    print(f"  valor: {data.get('valor')}")
+    print("="*60 + "\n")
 
     # --- CORREÇÃO DE LÓGICA: Não forçar '0', mas aceitar o valor do payload ('Y') ---
     # Assume 'N' como default se o campo 'lancado' não vier no payload
@@ -235,9 +244,14 @@ def criar_formulario():
     # ✅ NOVO: Criar lançamentos adicionais para cada obra selecionada
     if data.get("multiplos_lancamentos") and data.get("obras_adicionais"):
         obras_adicionais = data.get("obras_adicionais", [])
+        print(f"✅ Criando lançamentos adicionais para {len(obras_adicionais)} obras")
+        print(f"   Grupo: {grupo_lancamento}")
+        
         for obra_info in obras_adicionais:
             obra_id = obra_info.get("obra_id")
             valor = obra_info.get("valor", 0)
+            
+            print(f"   Processando obra {obra_id} com valor {valor}")
             
             # Converter valor de string formatada para float se necessário
             if isinstance(valor, str):
@@ -246,6 +260,7 @@ def criar_formulario():
             
             # Pular se o valor for 0 ou se for a obra principal (já criada)
             if valor <= 0 or obra_id == data["obra"]:
+                print(f"   ⚠️ Pulando obra {obra_id}: valor={valor}, é_principal={obra_id == data['obra']}")
                 continue
             
             try:
@@ -276,9 +291,10 @@ def criar_formulario():
                         data.get("multiplos_lancamentos", 0),
                         grupo_lancamento  # Mesmo grupo do lançamento principal
                     ))
+                    print(f"   ✅ Obra {obra_id} inserida com sucesso (grupo={grupo_lancamento})")
                 except Exception as e_grupo:
                     # Se falhar com grupo_lancamento, tenta sem
-                    print(f"⚠️ Erro ao inserir obra adicional com grupo_lancamento: {e_grupo}")
+                    print(f"⚠️ Erro ao inserir obra {obra_id} com grupo_lancamento: {e_grupo}")
                     cursor.execute("""
                         INSERT INTO formulario (
                             data_lancamento, solicitante, titular, referente, valor, obra, 
@@ -303,10 +319,14 @@ def criar_formulario():
                         data.get("categoria"),
                         data.get("multiplos_lancamentos", 0)
                     ))
+                    print(f"   ✅ Obra {obra_id} inserida SEM grupo (tentativa 2)")
                 conn.commit()
             except Exception as e:
-                print(f"Erro ao inserir lançamento adicional para obra {obra_id}: {e}")
+                print(f"❌ Erro ao inserir lançamento adicional para obra {obra_id}: {e}")
+                conn.rollback()
                 continue
+    else:
+        print(f"⚠️ multiplos_lancamentos={data.get('multiplos_lancamentos')}, obras_adicionais={len(data.get('obras_adicionais', []))}")
     
     cursor.close()
     conn.close()
