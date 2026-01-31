@@ -56,11 +56,19 @@ def listar_formularios():
     cursor = conn.cursor(dictionary=True)
     
     # ✅ NOVO: Usar ROW_NUMBER para pegar apenas o PRIMEIRO lançamento de cada grupo
-    # Assim não duplica lançamentos múltiplos no dashboard
+    # Para lançamentos múltiplos: agrupa por grupo_lancamento ou multiplos_lancamentos
+    # Para lançamentos simples: cada um é seu próprio grupo
     cursor.execute("""
         SELECT f.* FROM (
             SELECT *,
-                   ROW_NUMBER() OVER (PARTITION BY COALESCE(grupo_lancamento, CONCAT('individual_', id)) ORDER BY id ASC) as rn
+                   ROW_NUMBER() OVER (
+                       PARTITION BY CASE 
+                           WHEN grupo_lancamento IS NOT NULL THEN CONCAT('grupo_', grupo_lancamento)
+                           WHEN multiplos_lancamentos = 1 THEN CONCAT('multi_', DATE_FORMAT(data_lancamento, '%Y%m%d'), '_', solicitante, '_', obra, '_', titular)
+                           ELSE CONCAT('individual_', id)
+                       END 
+                       ORDER BY id ASC
+                   ) as rn
             FROM formulario
         ) f
         WHERE f.rn = 1
@@ -68,19 +76,39 @@ def listar_formularios():
     """)
     formularios = cursor.fetchall()
     
-    # ✅ NOVO: Carregar obras relacionadas para cada lançamento com grupo_lancamento
+    # ✅ NOVO: Carregar obras relacionadas para cada lançamento com grupo_lancamento ou múltiplos
     for form in formularios:
+        # Se tem grupo_lancamento, buscar relacionados pelo grupo
         if form.get("grupo_lancamento"):
-            # Buscar todos os lançamentos do mesmo grupo (exceto o primeiro/principal)
             cursor.execute("""
                 SELECT id, obra, valor, referente, data_pagamento, forma_pagamento
                 FROM formulario
                 WHERE grupo_lancamento = %s AND id != %s
                 ORDER BY id ASC
             """, (form["grupo_lancamento"], form["id"]))
-            obras_relacionadas = cursor.fetchall()
+        # Se é múltiplo mas sem grupo_lancamento (antigo), buscar relacionados
+        elif form.get("multiplos_lancamentos") == 1:
+            cursor.execute("""
+                SELECT id, obra, valor, referente, data_pagamento, forma_pagamento
+                FROM formulario
+                WHERE multiplos_lancamentos = 1 
+                AND DATE_FORMAT(data_lancamento, '%Y%m%d') = DATE_FORMAT(%s, '%Y%m%d')
+                AND solicitante = %s
+                AND obra IN (SELECT obra FROM formulario WHERE multiplos_lancamentos = 1 AND solicitante = %s AND DATE_FORMAT(data_lancamento, '%Y%m%d') = DATE_FORMAT(%s, '%Y%m%d'))
+                AND id != %s
+                ORDER BY id ASC
+            """, (form["data_lancamento"], form["solicitante"], form["solicitante"], form["data_lancamento"], form["id"]))
+        else:
+            # Lançamento simples, sem relacionados
+            cursor.fetchall()  # Limpar qualquer resultado anterior
+            obras_relacionadas = []
             if obras_relacionadas:
                 form["obras_relacionadas"] = obras_relacionadas
+            continue
+        
+        obras_relacionadas = cursor.fetchall()
+        if obras_relacionadas:
+            form["obras_relacionadas"] = obras_relacionadas
     
     cursor.close()
     conn.close()
