@@ -64,7 +64,7 @@ def listar_formularios():
                    ROW_NUMBER() OVER (
                        PARTITION BY CASE 
                            WHEN grupo_lancamento IS NOT NULL THEN CONCAT('grupo_', grupo_lancamento)
-                           WHEN multiplos_lancamentos = 1 THEN CONCAT('multi_', DATE_FORMAT(data_lancamento, '%Y%m%d'), '_', solicitante, '_', obra, '_', titular)
+                           WHEN multiplos_lancamentos = 1 THEN CONCAT('multi_', DATE_FORMAT(data_lancamento, '%Y%m%d'), '_', solicitante, '_', titular)
                            ELSE CONCAT('individual_', id)
                        END 
                        ORDER BY id ASC
@@ -76,8 +76,14 @@ def listar_formularios():
     """)
     formularios = cursor.fetchall()
     
-    # ✅ NOVO: Carregar obras relacionadas para cada lançamento com grupo_lancamento ou múltiplos
+    # ✅ NOVO: Carregar obras relacionadas e calcular valor total para cada lançamento
     for form in formularios:
+        # Converter valores Decimal para float
+        if "valor" in form and form["valor"] is not None:
+            form["valor"] = float(form["valor"])
+        
+        obras_relacionadas = []
+        
         # Se tem grupo_lancamento, buscar relacionados pelo grupo
         if form.get("grupo_lancamento"):
             cursor.execute("""
@@ -86,6 +92,8 @@ def listar_formularios():
                 WHERE grupo_lancamento = %s AND id != %s
                 ORDER BY id ASC
             """, (form["grupo_lancamento"], form["id"]))
+            obras_relacionadas = cursor.fetchall()
+            
         # Se é múltiplo mas sem grupo_lancamento (antigo), buscar relacionados
         elif form.get("multiplos_lancamentos") == 1:
             cursor.execute("""
@@ -94,21 +102,33 @@ def listar_formularios():
                 WHERE multiplos_lancamentos = 1 
                 AND DATE_FORMAT(data_lancamento, '%Y%m%d') = DATE_FORMAT(%s, '%Y%m%d')
                 AND solicitante = %s
-                AND obra IN (SELECT obra FROM formulario WHERE multiplos_lancamentos = 1 AND solicitante = %s AND DATE_FORMAT(data_lancamento, '%Y%m%d') = DATE_FORMAT(%s, '%Y%m%d'))
+                AND titular = %s
                 AND id != %s
                 ORDER BY id ASC
-            """, (form["data_lancamento"], form["solicitante"], form["solicitante"], form["data_lancamento"], form["id"]))
-        else:
-            # Lançamento simples, sem relacionados
-            cursor.fetchall()  # Limpar qualquer resultado anterior
-            obras_relacionadas = []
-            if obras_relacionadas:
-                form["obras_relacionadas"] = obras_relacionadas
-            continue
+            """, (form["data_lancamento"], form["solicitante"], form["titular"], form["id"]))
+            obras_relacionadas = cursor.fetchall()
         
-        obras_relacionadas = cursor.fetchall()
+        # Se tem obras relacionadas, armazenar e CALCULAR VALOR TOTAL
         if obras_relacionadas:
-            form["obras_relacionadas"] = obras_relacionadas
+            # Converter Decimal para float para JSON serialization
+            obras_relacionadas_clean = []
+            for obra in obras_relacionadas:
+                obra_clean = dict(obra)
+                if "valor" in obra_clean:
+                    obra_clean["valor"] = float(obra_clean["valor"]) if obra_clean["valor"] else 0
+                obras_relacionadas_clean.append(obra_clean)
+            
+            form["obras_relacionadas"] = obras_relacionadas_clean
+            
+            # Calcular valor total (principal + todos os relacionados)
+            valor_total = float(form.get("valor") or 0)
+            for obra in obras_relacionadas_clean:
+                valor_total += float(obra.get("valor") or 0)
+            
+            # Armazenar o valor total (para exibição na tabela)
+            form["valor_total"] = valor_total
+            # Manter o valor original para compatibilidade
+            form["valor_principal"] = float(form.get("valor") or 0)
     
     cursor.close()
     conn.close()
