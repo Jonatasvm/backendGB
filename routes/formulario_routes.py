@@ -62,12 +62,14 @@ def listar_formularios():
         if form.get("grupo_lancamento"):
             # Buscar todos os lançamentos do mesmo grupo (exceto o atual)
             cursor.execute("""
-                SELECT id, obra, valor, referente
+                SELECT id, obra, valor, referente, data_pagamento, forma_pagamento
                 FROM formulario
                 WHERE grupo_lancamento = %s AND id != %s
                 ORDER BY id ASC
             """, (form["grupo_lancamento"], form["id"]))
-            form["obras_relacionadas"] = cursor.fetchall()
+            obras_relacionadas = cursor.fetchall()
+            if obras_relacionadas:
+                form["obras_relacionadas"] = obras_relacionadas
     
     cursor.close()
     conn.close()
