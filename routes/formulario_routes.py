@@ -145,15 +145,15 @@ def criar_formulario():
 
     data = request.get_json()
     
-    # ✅ DEBUG: Log do payload recebido
-    print("\n" + "="*60)
+    # ✅ DEBUG: Log completo do payload recebido
+    print("\n" + "="*70)
     print("📥 POST /formulario - Payload recebido:")
     print(f"  multiplos_lancamentos: {data.get('multiplos_lancamentos')}")
     print(f"  obras_adicionais: {data.get('obras_adicionais')}")
     print(f"  obra (principal): {data.get('obra')}")
-    print(f"  valor: {data.get('valor')}")
-    print("="*60 + "\n")
-
+    print(f"  valor (total): {data.get('valor')}")
+    print("="*70)
+    
     # --- CORREÇÃO DE LÓGICA: Não forçar '0', mas aceitar o valor do payload ('Y') ---
     # Assume 'N' como default se o campo 'lancado' não vier no payload
     valor_lancado = data.get("lancado", "N") 
@@ -181,18 +181,26 @@ def criar_formulario():
     if data.get("multiplos_lancamentos") and data.get("obras_adicionais") and len(data.get("obras_adicionais", [])) > 0:
         import uuid
         grupo_lancamento = str(uuid.uuid4())[:8]  # ID curto para agrupar
+        print(f"✅ Gerando grupo_lancamento: {grupo_lancamento}")
     
     try:
         # ✅ NOVO: Se for múltiplos lançamentos, criar UM registro para CADA obra no array
         if data.get("multiplos_lancamentos") and data.get("obras_adicionais"):
             obras_adicionais = data.get("obras_adicionais", [])
-            print(f"\n✅ MÚLTIPLO LANÇAMENTO - Criando {len(obras_adicionais)} registros (grupo={grupo_lancamento})")
             
-            for obra_info in obras_adicionais:
+            if isinstance(obras_adicionais, str):
+                print(f"⚠️ AVISO: obras_adicionais veio como STRING: {obras_adicionais}")
+                obras_adicionais = []
+            
+            print(f"\n✅ MÚLTIPLO LANÇAMENTO DETECTADO")
+            print(f"   Total de obras a criar: {len(obras_adicionais)}")
+            print(f"   grupo_lancamento: {grupo_lancamento}\n")
+            
+            for idx, obra_info in enumerate(obras_adicionais, 1):
                 obra_id = obra_info.get("obra_id")
                 valor = obra_info.get("valor", 0)
                 
-                # Converter valor de string formatada para float se necessário
+                print(f"   [{idx}] Processando obra {obra_id} com valor {valor}")
                 if isinstance(valor, str):
                     valor_limpo = valor.replace("R$", "").replace(".", "").replace(",", ".").strip()
                     valor = float(valor_limpo) if valor_limpo else 0
@@ -230,7 +238,7 @@ def criar_formulario():
                         ))
                         conn.commit()
                         formulario_id = cursor.lastrowid
-                        print(f"      ✅ Inserido com ID {formulario_id}")
+                        print(f"      ✅ Inserido com sucesso! ID: {formulario_id} (grupo={grupo_lancamento})")
                     except Exception as e_grupo:
                         # Se falhar com grupo_lancamento, tenta sem
                         print(f"      ⚠️ Erro com grupo_lancamento: {e_grupo}, tentando sem...")
@@ -263,12 +271,12 @@ def criar_formulario():
                             formulario_id = cursor.lastrowid
                             print(f"      ✅ Inserido SEM grupo com ID {formulario_id}")
                         except Exception as e:
-                            print(f"      ❌ Erro ao inserir obra {obra_id}: {e}")
+                            print(f"      ❌ ERRO ao inserir obra {obra_id}: {e}")
                             conn.rollback()
-            print("")
+            print("="*70)
         else:
             # Inserir o lançamento principal (para lançamentos simples, não múltiplos)
-            cursor.execute("""
+            print(f"✅ LANÇAMENTO SIMPLES (não múltiplo)")
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
                     data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
