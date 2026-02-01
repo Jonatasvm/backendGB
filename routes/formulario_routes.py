@@ -56,19 +56,16 @@ def listar_formularios():
     cursor = conn.cursor(dictionary=True)
     
     # ✅ NOVO: Usar ROW_NUMBER para pegar apenas o PRIMEIRO lançamento de cada grupo
-    # Para lançamentos múltiplos: agrupa por grupo_lancamento ou multiplos_lancamentos
-    # Para lançamentos simples: cada um é seu próprio grupo
+    # Apenas agrupa registros que têm grupo_lancamento
+    # Registros SEM grupo_lancamento são retornados normalmente
     cursor.execute("""
         SELECT f.* FROM (
             SELECT *,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY CASE 
-                           WHEN grupo_lancamento IS NOT NULL THEN CONCAT('grupo_', grupo_lancamento)
-                           WHEN multiplos_lancamentos = 1 THEN CONCAT('multi_', DATE_FORMAT(data_lancamento, '%Y%m%d'), '_', solicitante, '_', titular)
-                           ELSE CONCAT('individual_', id)
-                       END 
-                       ORDER BY id ASC
-                   ) as rn
+                   CASE 
+                       WHEN grupo_lancamento IS NOT NULL 
+                       THEN ROW_NUMBER() OVER (PARTITION BY grupo_lancamento ORDER BY id ASC)
+                       ELSE 1
+                   END as rn
             FROM formulario
         ) f
         WHERE f.rn = 1
@@ -239,6 +236,7 @@ def criar_formulario():
                         conn.commit()
                         formulario_id = cursor.lastrowid
                         print(f"      ✅ Inserido com sucesso! ID: {formulario_id} (grupo={grupo_lancamento})")
+                        print(f"         ✔️ COMMIT realizado para ID {formulario_id}")
                     except Exception as e_grupo:
                         # Se falhar com grupo_lancamento, tenta sem
                         print(f"      ⚠️ Erro com grupo_lancamento: {e_grupo}, tentando sem...")
@@ -270,10 +268,14 @@ def criar_formulario():
                             conn.commit()
                             formulario_id = cursor.lastrowid
                             print(f"      ✅ Inserido SEM grupo com ID {formulario_id}")
+                            print(f"         ✔️ COMMIT realizado para ID {formulario_id}")
                         except Exception as e:
-                            print(f"      ❌ ERRO ao inserir obra {obra_id}: {e}")
+                            print(f"      ❌ ERRO ao inserir obra {obra_id}: {type(e).__name__}: {e}")
+                            print(f"         Fazendo ROLLBACK...")
                             conn.rollback()
+                            print(f"         ❌ ROLLBACK realizado")
             print("="*70)
+            print("✅ FIM DO MÚLTIPLO LANÇAMENTO\n")
         else:
             # Inserir o lançamento principal (para lançamentos simples, não múltiplos)
             print(f"✅ LANÇAMENTO SIMPLES (não múltiplo)")
