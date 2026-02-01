@@ -277,6 +277,7 @@ def criar_formulario():
         else:
             # Inserir o lançamento principal (para lançamentos simples, não múltiplos)
             print(f"✅ LANÇAMENTO SIMPLES (não múltiplo)")
+            cursor.execute("""
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
                     data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
