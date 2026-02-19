@@ -88,12 +88,15 @@ def export_xls():
 
         # Adicionar dados
         for registro in registros:
-            # Formatar valor (centavos para reais) - SEM símbolo de moeda
+            # Formatar valor (centavos para reais) - SEM símbolo de moeda e SEM separador de milhar
             valor_raw = registro.get('valor', 0)
             try:
-                valor_formatado = float(valor_raw) / 100 if valor_raw else 0
+                valor_float = float(valor_raw) / 100 if valor_raw else 0
+                # ✅ CORREÇÃO: Formatar como string sem ponto de milhar, apenas com vírgula decimal
+                # Exemplo: 1200.25 em português fica "1200,25"
+                valor_formatado = f"{valor_float:.2f}".replace(".", ",")
             except:
-                valor_formatado = 0
+                valor_formatado = "0,00"
 
             # Status lançamento
             status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
@@ -153,11 +156,9 @@ def export_xls():
             ]
             ws.append(row)
 
-        # Formatar coluna de valor - sem símbolo de moeda, apenas número puro
-        for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
-            for cell in row:
-                cell.number_format = '0.00'  # Apenas número, nenhum símbolo de moeda
-
+        # Não aplicar format numérico pois o valor já está formatado como string
+        # (foi convertido para "1200,25" ao invés de número puro)
+        
         # ✅ NOVO: Formatar colunas de data com tipo "Data Completa" (dd/mm/yyyy)
         # Coluna B é Data Pagamento (coluna 2)
         for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
