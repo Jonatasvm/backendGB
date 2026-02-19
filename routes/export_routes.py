@@ -156,9 +156,11 @@ def export_xls():
             ]
             ws.append(row)
 
-        # Não aplicar format numérico pois o valor já está formatado como string
-        # (foi convertido para "1200,25" ao invés de número puro)
-        
+        # ✅ CORREÇÃO: Formatar coluna de valor como texto (não numérico) para evitar ponto de milhar
+        for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
+            for cell in row:
+                cell.number_format = '@'  # Formato de texto (evita formatação de número com ponto de milhar)
+
         # ✅ NOVO: Formatar colunas de data com tipo "Data Completa" (dd/mm/yyyy)
         # Coluna B é Data Pagamento (coluna 2)
         for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
