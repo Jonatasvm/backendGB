@@ -204,9 +204,12 @@ def criar_formulario():
                 else:
                     valor = float(valor) if valor else 0
                 
-                print(f"   → Obra {obra_id}: R$ {valor}")
+                # ✅ CORREÇÃO: Converter valor para centavos antes de armazenar
+                valor_centavos = int(round(valor * 100))
                 
-                if valor > 0:
+                print(f"   → Obra {obra_id}: R$ {valor} = {valor_centavos} centavos")
+                
+                if valor_centavos > 0:
                     try:
                         cursor.execute("""
                             INSERT INTO formulario (
@@ -219,7 +222,7 @@ def criar_formulario():
                             data["solicitante"], 
                             data["titular"], 
                             data["referente"],
-                            valor,  # Valor específico desta obra
+                            valor_centavos,  # Valor em centavos
                             obra_id,  # ID da obra
                             data["data_pagamento"], 
                             data["forma_pagamento"],
@@ -252,7 +255,7 @@ def criar_formulario():
                                 data["solicitante"], 
                                 data["titular"], 
                                 data["referente"],
-                                valor,
+                                valor_centavos,  # Valor em centavos
                                 obra_id,
                                 data["data_pagamento"], 
                                 data["forma_pagamento"],
@@ -279,6 +282,8 @@ def criar_formulario():
         else:
             # Inserir o lançamento principal (para lançamentos simples, não múltiplos)
             print(f"✅ LANÇAMENTO SIMPLES (não múltiplo)")
+            # ✅ CORREÇÃO: Converter valor para centavos antes de armazenar
+            valor_centavos = int(round(float(data.get("valor", 0)) * 100))
             cursor.execute("""
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
@@ -290,7 +295,7 @@ def criar_formulario():
                 data["solicitante"], 
                 data["titular"], 
                 data["referente"],
-                data["valor"], 
+                valor_centavos, 
                 data["obra"], 
                 data["data_pagamento"], 
                 data["forma_pagamento"],
