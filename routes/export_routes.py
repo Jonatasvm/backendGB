@@ -88,13 +88,13 @@ def export_xls():
 
         # Adicionar dados
         for registro in registros:
-            # Formatar valor (já está em reais) - SEM símbolo de moeda e SEM separador de milhar
+            # Formatar valor (de centavos para reais) - SEM símbolo de moeda e SEM separador de milhar
             valor_raw = registro.get('valor', 0)
             try:
-                # ✅ CORREÇÃO: valor já vem em reais, não dividir por 100
-                valor_float = float(valor_raw) if valor_raw else 0
+                # ✅ CORREÇÃO: Backend armazena em centavos, dividir por 100
+                valor_float = float(valor_raw) / 100 if valor_raw else 0
                 # ✅ CORREÇÃO: Formatar como string sem ponto de milhar, apenas com vírgula decimal
-                # Exemplo: 1200.25 em português fica "1200,25"
+                # Exemplo: 6234.52 em português fica "6234,52"
                 valor_formatado = f"{valor_float:.2f}".replace(".", ",")
             except:
                 valor_formatado = "0,00"
