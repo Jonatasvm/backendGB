@@ -146,7 +146,7 @@ def export_xls():
             row = [
                 registro.get('id', ''),
                 data_pagamento_corrigida,
-                valor_formatado,
+                "'" + valor_formatado,  # ✅ CRÍTICO: Apóstrofo força Excel a tratar como texto puro (sem formatação de milhar)
                 forma_pagamento_normalizada,
                 quem_paga_normalizado,
                 obra_normalizada,
