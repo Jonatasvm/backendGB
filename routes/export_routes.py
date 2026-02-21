@@ -94,8 +94,11 @@ def export_xls():
                 # ✅ CORREÇÃO: Backend armazena em centavos, dividir por 100
                 valor_float = float(valor_raw) / 100 if valor_raw else 0
                 # ✅ CORREÇÃO: Formatar como string sem ponto de milhar, apenas com vírgula decimal
-                # Exemplo: 6234.52 em português fica "6234,52"
-                valor_formatado = f"{valor_float:.2f}".replace(".", ",")
+                # Exemplo: 1550.00 em português fica "1550,00" (SEM ponto de milhar)
+                # Usar format de número inteiro + decimal separadamente para evitar LibreOffice adicionar ponto
+                valor_int = int(valor_float)
+                valor_dec = int(round((valor_float - valor_int) * 100))
+                valor_formatado = f"{valor_int},{valor_dec:02d}"
             except:
                 valor_formatado = "0,00"
 
