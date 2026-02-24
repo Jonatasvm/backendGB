@@ -88,41 +88,37 @@ def export_xls():
     # Adicionar dados
     for registro in registros:
         # Corrigir ID: remover aspas simples no início
-        id_final = str(registro.get('id', '')).lstrip("'").strip()
+        id_valor = str(registro.get('id', '')).replace("'", "").strip()
+        try:
+            id_final = int(id_valor) if id_valor else 0
+        except:
+            id_final = id_valor
         
         # Corrigir data: remover aspas simples, garantir datetime
         data_pagamento_raw = registro.get('dataPagamento', '')
-        data_pagamento_final = ''
+        data_pagamento_final = None
         if data_pagamento_raw:
-            if isinstance(data_pagamento_raw, str):
-                data_sem_aspa = str(data_pagamento_raw).lstrip("'").strip()
+            # Remove TODAS as aspas, não apenas as do início
+            data_limpa = str(data_pagamento_raw).replace("'", "").replace('"', '').strip()
+            if data_limpa:
                 try:
                     from datetime import datetime as dt
-                    data_obj = dt.strptime(data_sem_aspa, '%Y-%m-%d')
+                    data_obj = dt.strptime(data_limpa, '%Y-%m-%d')
                     data_pagamento_final = data_obj + timedelta(days=1)
                 except Exception:
-                    # Se não for formato data, salva como está (sem aspa)
-                    data_pagamento_final = data_sem_aspa
-            elif isinstance(data_pagamento_raw, (datetime,)):
-                data_pagamento_final = data_pagamento_raw
-            else:
-                data_pagamento_final = str(data_pagamento_raw).lstrip("'").strip()
-        else:
-            data_pagamento_final = ''
+                    data_pagamento_final = None
 
         # Corrigir valor: remover aspas simples, garantir float
         valor_raw = registro.get('valor', 0)
-        if isinstance(valor_raw, str):
-            valor_sem_aspa = str(valor_raw).lstrip("'").strip()
-            try:
-                valor_final = float(valor_sem_aspa) / 100
-            except Exception:
-                valor_final = 0.0
-        else:
-            try:
-                valor_final = float(valor_raw) / 100 if valor_raw else 0.0
-            except Exception:
-                valor_final = 0.0
+        valor_final = 0.0
+        if valor_raw:
+            # Remove TODAS as aspas, não apenas as do início
+            valor_limpo = str(valor_raw).replace("'", "").replace('"', '').strip()
+            if valor_limpo:
+                try:
+                    valor_final = float(valor_limpo) / 100
+                except Exception:
+                    valor_final = 0.0
 
         forma_pagamento = registro.get('formaDePagamento', '')
         forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
@@ -146,6 +142,9 @@ def export_xls():
 
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
+        
+        # LOG TEMPORÁRIO
+        print(f"[DEBUG] ID: {repr(id_final)}, Data: {repr(data_pagamento_final)}, Valor: {repr(valor_final)}")
 
         row = [
             id_final,
@@ -203,10 +202,16 @@ def export_xls():
     wb.save(output)
     output.seek(0)
 
-    # Enviar arquivo como download
+    # Enviar arquivo como download com headers corretos
     return send_file(
         output,
         as_attachment=True,
         download_name=f"lancamentos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            'Content-Disposition': f'attachment; filename="lancamentos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx"',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
     )
