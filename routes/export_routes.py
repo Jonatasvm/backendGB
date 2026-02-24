@@ -140,10 +140,27 @@ def export_xls():
         if isinstance(valor_sanit, str):
             valor_sanit = valor_sanit.lstrip("'")
 
+        # Garantir que data_pagamento_sanit seja datetime ou string sem aspas
+        if isinstance(data_pagamento_corrigida, str):
+            data_pagamento_final = data_pagamento_corrigida.lstrip("'")
+        elif data_pagamento_corrigida:
+            data_pagamento_final = data_pagamento_corrigida
+        else:
+            data_pagamento_final = ''
+
+        # Garantir que valor seja float e nunca string com aspas
+        if isinstance(valor_float, str):
+            try:
+                valor_final = float(valor_float.lstrip("'"))
+            except:
+                valor_final = 0.0
+        else:
+            valor_final = valor_float
+
         row = [
             id_sanit,
-            data_pagamento_sanit,  # tipo data
-            valor_sanit,           # número float, não string!
+            data_pagamento_final,  # tipo data ou string sem aspas
+            valor_final,           # número float, nunca string!
             forma_pagamento_normalizada,
             quem_paga_normalizado,
             obra_normalizada,
