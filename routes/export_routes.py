@@ -88,42 +88,53 @@ def export_xls():
     # Adicionar dados
     for registro in registros:
         # --- LOG PARA DEBUG ---
-        # print('DEBUG registro:', registro)
+        print('DEBUG registro completo:', registro)
+        print('DEBUG dataPagamento raw:', repr(registro.get('dataPagamento', '')))
+        print('DEBUG valor raw:', repr(registro.get('valor', 0)))
+        print('DEBUG id raw:', repr(registro.get('id', '')))
         # --- FIM LOG ---
 
+        # Corrigir ID: remover aspas
+        id_final = str(registro.get('id', '')).lstrip("'").strip()
+        
         # Corrigir data: garantir datetime ou string sem aspa
         data_pagamento_raw = registro.get('dataPagamento', '')
         data_pagamento_final = ''
         if data_pagamento_raw:
             if isinstance(data_pagamento_raw, str):
-                data_sem_aspa = data_pagamento_raw.lstrip("'")
+                data_sem_aspa = data_pagamento_raw.lstrip("'").strip()
                 try:
                     from datetime import datetime as dt
                     data_obj = dt.strptime(data_sem_aspa, '%Y-%m-%d')
                     data_pagamento_final = data_obj + timedelta(days=1)
-                except:
+                except Exception as e:
+                    print(f'DEBUG erro ao parsear data: {e}')
                     # Se não for formato data, salva string sem aspa
                     data_pagamento_final = data_sem_aspa
             elif isinstance(data_pagamento_raw, (datetime,)):
                 data_pagamento_final = data_pagamento_raw
             else:
-                data_pagamento_final = str(data_pagamento_raw).lstrip("'")
+                data_pagamento_final = str(data_pagamento_raw).lstrip("'").strip()
         else:
             data_pagamento_final = ''
 
         # Corrigir valor: garantir float, nunca string com aspa
         valor_raw = registro.get('valor', 0)
         if isinstance(valor_raw, str):
-            valor_sem_aspa = valor_raw.lstrip("'")
+            valor_sem_aspa = valor_raw.lstrip("'").strip()
             try:
                 valor_final = float(valor_sem_aspa) / 100
-            except:
+            except Exception as e:
+                print(f'DEBUG erro ao converter valor: {e}')
                 valor_final = 0.0
         else:
             try:
-                valor_final = float(valor_raw) / 100
-            except:
+                valor_final = float(valor_raw) / 100 if valor_raw else 0.0
+            except Exception as e:
+                print(f'DEBUG erro ao converter valor: {e}')
                 valor_final = 0.0
+        
+        print(f'DEBUG final - ID: {repr(id_final)}, DATA: {repr(data_pagamento_final)}, VALOR: {repr(valor_final)}')
 
         forma_pagamento = registro.get('formaDePagamento', '')
         forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
@@ -149,7 +160,7 @@ def export_xls():
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
         row = [
-            str(registro.get('id', '')).lstrip("'"),
+            id_final,
             data_pagamento_final,
             valor_final,
             forma_pagamento_normalizada,
@@ -170,11 +181,34 @@ def export_xls():
         for cell in row:
             cell.number_format = '0.00'
             cell.alignment = Alignment(horizontal='right')
+            # Garantir que é número e não texto
+            if isinstance(cell.value, str):
+                try:
+                    cell.value = float(cell.value.lstrip("'"))
+                except:
+                    pass
 
     # Formatar coluna de data como data completa (dd/mm/yyyy)
     for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
         for cell in row:
             cell.number_format = 'dd/mm/yyyy'
+            # Garantir que é data e não texto
+            if isinstance(cell.value, str):
+                try:
+                    from datetime import datetime as dt
+                    cell.value = dt.strptime(cell.value.lstrip("'"), '%Y-%m-%d')
+                except:
+                    pass
+
+    # Formatar coluna de ID como número (sem casas decimais)
+    for row in ws.iter_rows(min_row=2, min_col=1, max_col=1):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='left')
+            if isinstance(cell.value, str):
+                try:
+                    cell.value = int(cell.value.lstrip("'"))
+                except:
+                    cell.value = str(cell.value).lstrip("'")
 
     # Salvar arquivo em memória
     output = BytesIO()
