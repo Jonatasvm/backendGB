@@ -79,6 +79,17 @@ def listar_formularios():
         if "valor" in form and form["valor"] is not None:
             form["valor"] = float(form["valor"])
         
+        # ✅ NOVO: Converter datas para string ISO (YYYY-MM-DD)
+        for date_field in ["data_pagamento", "data_lancamento", "data_competencia", "carimbo"]:
+            if date_field in form and form[date_field] is not None:
+                try:
+                    if hasattr(form[date_field], 'strftime'):
+                        form[date_field] = form[date_field].strftime('%Y-%m-%d')
+                    else:
+                        form[date_field] = str(form[date_field])
+                except:
+                    form[date_field] = str(form[date_field]) if form[date_field] else None
+        
         obras_relacionadas = []
         
         # Se tem grupo_lancamento, buscar relacionados pelo grupo
