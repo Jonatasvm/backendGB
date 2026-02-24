@@ -7,6 +7,23 @@ from db import get_connection
 
 export_bp = Blueprint('export', __name__)
 
+def set_cell_value_without_quote(cell, value, data_type=None):
+    """
+    Define o valor de uma célula sem que o openpyxl adicione aspas.
+    """
+    if data_type == 'number':
+        cell.value = float(value) if value else 0.0
+        cell.data_type = 'n'  # number
+    elif data_type == 'date':
+        cell.value = value  # datetime object
+        cell.data_type = 'd'  # date
+    elif data_type == 'integer':
+        cell.value = int(value) if value else 0
+        cell.data_type = 'n'  # number
+    else:
+        cell.value = value
+    return cell
+
 def normalize_forma_pagamento(forma_pagamento):
     """
     Normaliza a forma de pagamento para Título Case.
@@ -147,6 +164,12 @@ def export_xls():
             registro.get('observacao', '')
         ]
         ws.append(row)
+        
+        # Forçar tipos de dados nas células para evitar aspas adicionadas pelo openpyxl
+        current_row = ws.max_row
+        set_cell_value_without_quote(ws.cell(row=current_row, column=1), id_final, 'integer')
+        set_cell_value_without_quote(ws.cell(row=current_row, column=2), data_pagamento_final, 'date')
+        set_cell_value_without_quote(ws.cell(row=current_row, column=3), valor_final, 'number')
 
     # Formatar coluna de valor como número com ponto decimal
     for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
