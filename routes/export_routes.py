@@ -67,7 +67,7 @@ def export_xls():
         'Observação'
     ]
 
-    # Formatos
+    # Formatos SEM problemas de caracteres especiais
     header_format = workbook.add_format({
         'bold': True,
         'bg_color': '#4472C4',
@@ -75,18 +75,6 @@ def export_xls():
         'border': 1,
         'align': 'center',
         'valign': 'vcenter'
-    })
-
-    number_format = workbook.add_format({
-        'num_format': '0.00',
-        'border': 1,
-        'align': 'right'
-    })
-
-    date_format = workbook.add_format({
-        'num_format': 'dd/mm/yyyy',
-        'border': 1,
-        'align': 'center'
     })
 
     text_format = workbook.add_format({
@@ -145,20 +133,20 @@ def export_xls():
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
-        # Escrever dados na linha
-        worksheet.write_number(row_num, 0, id_final, text_format)  # ID
-        worksheet.write_datetime(row_num, 1, data_pagamento_final, date_format) if data_pagamento_final else worksheet.write_blank(row_num, 1, '', date_format)  # Data
-        worksheet.write_number(row_num, 2, valor_final, number_format)  # Valor
-        worksheet.write_string(row_num, 3, forma_pagamento_normalizada, text_format)  # Forma de Pagamento
-        worksheet.write_string(row_num, 4, quem_paga_normalizado, text_format)  # Quem Paga
-        worksheet.write_string(row_num, 5, obra_normalizada, text_format)  # Centro de Custo
-        worksheet.write_string(row_num, 6, registro.get('titular', ''), text_format)  # Titular
-        worksheet.write_string(row_num, 7, registro.get('cpfCnpjTitularConta', ''), text_format)  # CPF/CNPJ
-        worksheet.write_string(row_num, 8, registro.get('chavePix', ''), text_format)  # Chave Pix
-        worksheet.write_string(row_num, 9, str(registro.get('obra', '')), text_format)  # Obra
-        worksheet.write_string(row_num, 10, categoria_nome, text_format)  # Categoria
-        worksheet.write_string(row_num, 11, status, text_format)  # Status Lançamento
-        worksheet.write_string(row_num, 12, registro.get('observacao', ''), text_format)  # Observação
+        # Escrever dados na linha - SEM FORMATAÇÃO QUE CAUSE PROBLEMAS
+        worksheet.write_number(row_num, 0, id_final)  # ID - número puro
+        worksheet.write_datetime(row_num, 1, data_pagamento_final) if data_pagamento_final else worksheet.write_blank(row_num, 1, '')  # Data - datetime puro
+        worksheet.write_number(row_num, 2, valor_final)  # Valor - número puro, sem formato
+        worksheet.write_string(row_num, 3, forma_pagamento_normalizada)  # Forma de Pagamento
+        worksheet.write_string(row_num, 4, quem_paga_normalizado)  # Quem Paga
+        worksheet.write_string(row_num, 5, obra_normalizada)  # Centro de Custo
+        worksheet.write_string(row_num, 6, registro.get('titular', ''))  # Titular
+        worksheet.write_string(row_num, 7, registro.get('cpfCnpjTitularConta', ''))  # CPF/CNPJ
+        worksheet.write_string(row_num, 8, registro.get('chavePix', ''))  # Chave Pix
+        worksheet.write_string(row_num, 9, str(registro.get('obra', '')))  # Obra
+        worksheet.write_string(row_num, 10, categoria_nome)  # Categoria
+        worksheet.write_string(row_num, 11, status)  # Status Lançamento
+        worksheet.write_string(row_num, 12, registro.get('observacao', ''))  # Observação
 
         row_num += 1
 
