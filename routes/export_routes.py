@@ -130,10 +130,20 @@ def export_xls():
             except:
                 categoria_nome = ''
 
+        # Sanitizar campos para remover aspas simples no início
+        id_sanit = str(registro.get('id', '')).lstrip("'")
+        data_pagamento_sanit = data_pagamento_corrigida
+        if isinstance(data_pagamento_sanit, str):
+            data_pagamento_sanit = data_pagamento_sanit.lstrip("'")
+        # valor_float é float, não precisa sanitizar, mas se vier string, sanitiza
+        valor_sanit = valor_float
+        if isinstance(valor_sanit, str):
+            valor_sanit = valor_sanit.lstrip("'")
+
         row = [
-            registro.get('id', ''),
-            data_pagamento_corrigida,  # tipo data
-            valor_float,               # número float, não string!
+            id_sanit,
+            data_pagamento_sanit,  # tipo data
+            valor_sanit,           # número float, não string!
             forma_pagamento_normalizada,
             quem_paga_normalizado,
             obra_normalizada,
