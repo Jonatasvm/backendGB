@@ -87,38 +87,26 @@ def export_xls():
 
     # Adicionar dados
     for registro in registros:
-        # Corrigir ID: remover aspas simples no início
-        id_valor = str(registro.get('id', '')).replace("'", "").strip()
-        try:
-            id_final = int(id_valor) if id_valor else 0
-        except:
-            id_final = id_valor
+        # ID vem como número do frontend
+        id_final = registro.get('id', 0)
         
-        # Corrigir data: remover aspas simples, garantir datetime
+        # Data vem como string ISO (YYYY-MM-DD) do frontend
         data_pagamento_raw = registro.get('dataPagamento', '')
         data_pagamento_final = None
         if data_pagamento_raw:
-            # Remove TODAS as aspas, não apenas as do início
-            data_limpa = str(data_pagamento_raw).replace("'", "").replace('"', '').strip()
-            if data_limpa:
-                try:
-                    from datetime import datetime as dt
-                    data_obj = dt.strptime(data_limpa, '%Y-%m-%d')
-                    data_pagamento_final = data_obj + timedelta(days=1)
-                except Exception:
-                    data_pagamento_final = None
+            try:
+                from datetime import datetime as dt
+                data_obj = dt.strptime(data_pagamento_raw, '%Y-%m-%d')
+                data_pagamento_final = data_obj + timedelta(days=1)
+            except Exception:
+                data_pagamento_final = None
 
-        # Corrigir valor: remover aspas simples, garantir float
+        # Valor vem em centavos como número inteiro do frontend
         valor_raw = registro.get('valor', 0)
-        valor_final = 0.0
-        if valor_raw:
-            # Remove TODAS as aspas, não apenas as do início
-            valor_limpo = str(valor_raw).replace("'", "").replace('"', '').strip()
-            if valor_limpo:
-                try:
-                    valor_final = float(valor_limpo) / 100
-                except Exception:
-                    valor_final = 0.0
+        try:
+            valor_final = float(valor_raw) / 100 if valor_raw else 0.0
+        except Exception:
+            valor_final = 0.0
 
         forma_pagamento = registro.get('formaDePagamento', '')
         forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
@@ -142,9 +130,6 @@ def export_xls():
 
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
-        
-        # LOG TEMPORÁRIO
-        print(f"[DEBUG] ID: {repr(id_final)}, Data: {repr(data_pagamento_final)}, Valor: {repr(valor_final)}")
 
         row = [
             id_final,
@@ -163,39 +148,21 @@ def export_xls():
         ]
         ws.append(row)
 
-    # Formatar coluna de valor como número com ponto decimal (compatível com LibreOffice)
+    # Formatar coluna de valor como número com ponto decimal
     for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
         for cell in row:
             cell.number_format = '0.00'
             cell.alignment = Alignment(horizontal='right')
-            # Garantir que é número e não texto
-            if isinstance(cell.value, str):
-                try:
-                    cell.value = float(cell.value.lstrip("'"))
-                except:
-                    pass
 
     # Formatar coluna de data como data completa (dd/mm/yyyy)
     for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
         for cell in row:
             cell.number_format = 'dd/mm/yyyy'
-            # Garantir que é data e não texto
-            if isinstance(cell.value, str):
-                try:
-                    from datetime import datetime as dt
-                    cell.value = dt.strptime(cell.value.lstrip("'"), '%Y-%m-%d')
-                except:
-                    pass
 
-    # Formatar coluna de ID como número (sem casas decimais)
+    # Formatar coluna de ID
     for row in ws.iter_rows(min_row=2, min_col=1, max_col=1):
         for cell in row:
             cell.alignment = Alignment(horizontal='left')
-            if isinstance(cell.value, str):
-                try:
-                    cell.value = int(cell.value.lstrip("'"))
-                except:
-                    cell.value = str(cell.value).lstrip("'")
 
     # Salvar arquivo em memória
     output = BytesIO()
