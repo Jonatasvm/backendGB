@@ -118,7 +118,8 @@ def export_xls():
                 valor_final = 0.0
             else:
                 valor_num = float(valor_raw)
-                valor_final = valor_num / 100  # Divide por 100 para converter centavos para reais
+                # ✅ CORREÇÃO: Valor já vem em centavos, divide por 100 para reais
+                valor_final = valor_num / 100
         except Exception:
             valor_final = 0.0
 
@@ -145,26 +146,30 @@ def export_xls():
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
-        # Escrever dados na linha - USANDO write_string PARA EVITAR PROBLEMAS DE CSV
-        worksheet.write_string(row_num, 0, str(id_final).strip() if id_final else '')  # ID - como texto puro
-        # Data: se houver, escreve como datetime; se não, deixa em branco
+        # ✅ CORREÇÃO: Escrever dados SEM aspas no começo
+        # ID como número puro (sem ')
+        worksheet.write_number(row_num, 0, id_final)
+        
+        # Data como string formatada DD/MM/YYYY (sem ')
         if data_pagamento_final:
-            worksheet.write_datetime(row_num, 1, data_pagamento_final, date_format)  # Data com formato seguro
+            data_str = data_pagamento_final.strftime('%d/%m/%Y')
+            worksheet.write(row_num, 1, data_str, text_format)
         else:
-            worksheet.write_blank(row_num, 1, '', text_format)  # Data vazia com formato
-        # Valor formatado como texto para evitar ' e manter 2 casas decimais
-        valor_formatado = f"{valor_final:.2f}".replace('.', ',')
-        worksheet.write_string(row_num, 2, valor_formatado.strip())  # Valor - texto formatado
-        worksheet.write_string(row_num, 3, str(forma_pagamento_normalizada).strip())  # Forma de Pagamento
-        worksheet.write_string(row_num, 4, str(quem_paga_normalizado).strip())  # Quem Paga
-        worksheet.write_string(row_num, 5, str(obra_normalizada).strip())  # Centro de Custo
-        worksheet.write_string(row_num, 6, str(registro.get('titular', '')).strip())  # Titular
-        worksheet.write_string(row_num, 7, str(registro.get('cpfCnpjTitularConta', '')).strip())  # CPF/CNPJ
-        worksheet.write_string(row_num, 8, str(registro.get('chavePix', '')).strip())  # Chave Pix
-        worksheet.write_string(row_num, 9, str(registro.get('obra', '')).strip())  # Obra
-        worksheet.write_string(row_num, 10, str(categoria_nome).strip())  # Categoria
-        worksheet.write_string(row_num, 11, str(status).strip())  # Status Lançamento
-        worksheet.write_string(row_num, 12, str(registro.get('observacao', '')).strip())  # Observação
+            worksheet.write(row_num, 1, '', text_format)
+        
+        # Valor como número (sem ')
+        worksheet.write_number(row_num, 2, valor_final)
+        
+        worksheet.write(row_num, 3, str(forma_pagamento_normalizada or ''))  # Forma de Pagamento
+        worksheet.write(row_num, 4, str(quem_paga_normalizado or ''))  # Quem Paga
+        worksheet.write(row_num, 5, str(obra_normalizada or ''))  # Centro de Custo
+        worksheet.write(row_num, 6, str(registro.get('titular', '') or ''))  # Titular
+        worksheet.write(row_num, 7, str(registro.get('cpfCnpjTitularConta', '') or ''))  # CPF/CNPJ
+        worksheet.write(row_num, 8, str(registro.get('chavePix', '') or ''))  # Chave Pix
+        worksheet.write(row_num, 9, str(registro.get('obra', '') or ''))  # Obra
+        worksheet.write(row_num, 10, str(categoria_nome or ''))  # Categoria
+        worksheet.write(row_num, 11, str(status or ''))  # Status Lançamento
+        worksheet.write(row_num, 12, str(registro.get('observacao', '') or ''))  # Observação
 
         row_num += 1
 
