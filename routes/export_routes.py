@@ -87,15 +87,12 @@ def export_xls():
 
     # Adicionar dados
     for registro in registros:
-        # Valor: de centavos para reais, formato texto, sem símbolo, sem ponto de milhar, decimal com vírgula
+        # Valor: de centavos para reais, como número (float), sem formatação de string
         valor_raw = registro.get('valor', 0)
         try:
             valor_float = float(valor_raw) / 100 if valor_raw else 0
-            valor_int = int(valor_float)
-            valor_dec = int(round((valor_float - valor_int) * 100))
-            valor_formatado = f"{valor_int},{valor_dec:02d}"
         except:
-            valor_formatado = "0,00"
+            valor_float = 0.0
 
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
@@ -136,7 +133,7 @@ def export_xls():
         row = [
             registro.get('id', ''),
             data_pagamento_corrigida,  # tipo data
-            valor_formatado,           # texto, sem símbolo, vírgula decimal
+            valor_float,               # número float, não string!
             forma_pagamento_normalizada,
             quem_paga_normalizado,
             obra_normalizada,
@@ -150,10 +147,11 @@ def export_xls():
         ]
         ws.append(row)
 
-    # Formatar coluna de valor como texto (evita ponto de milhar)
+    # Formatar coluna de valor como número com vírgula decimal
     for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
         for cell in row:
-            cell.number_format = '@'
+            cell.number_format = '#,##0.00'
+            cell.alignment = Alignment(horizontal='right')
 
     # Formatar coluna de data como data completa (dd/mm/yyyy)
     for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
