@@ -110,15 +110,14 @@ def export_xls():
             except Exception:
                 data_pagamento_final = None
 
-        # Valor vem em centavos como número inteiro do frontend
+        # Valor vem em CENTAVOS do frontend (já convertido pelo adapter)
         valor_raw = registro.get('valor', 0)
         try:
-            # Se valor_raw for 0 ou None, usa 0.0
             if not valor_raw:
                 valor_final = 0.0
             else:
                 valor_num = float(valor_raw)
-                # ✅ CORREÇÃO: Valor já vem em centavos, divide por 100 para reais
+                # ✅ CORREÇÃO: Valor vem em CENTAVOS, dividir por 100 para reais
                 valor_final = valor_num / 100
         except Exception:
             valor_final = 0.0
