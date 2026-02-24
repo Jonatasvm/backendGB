@@ -87,29 +87,21 @@ def export_xls():
 
     # Adicionar dados
     for registro in registros:
-        # --- LOG PARA DEBUG ---
-        print('DEBUG registro completo:', registro)
-        print('DEBUG dataPagamento raw:', repr(registro.get('dataPagamento', '')))
-        print('DEBUG valor raw:', repr(registro.get('valor', 0)))
-        print('DEBUG id raw:', repr(registro.get('id', '')))
-        # --- FIM LOG ---
-
-        # Corrigir ID: remover aspas
+        # Corrigir ID: remover aspas simples no início
         id_final = str(registro.get('id', '')).lstrip("'").strip()
         
-        # Corrigir data: garantir datetime ou string sem aspa
+        # Corrigir data: remover aspas simples, garantir datetime
         data_pagamento_raw = registro.get('dataPagamento', '')
         data_pagamento_final = ''
         if data_pagamento_raw:
             if isinstance(data_pagamento_raw, str):
-                data_sem_aspa = data_pagamento_raw.lstrip("'").strip()
+                data_sem_aspa = str(data_pagamento_raw).lstrip("'").strip()
                 try:
                     from datetime import datetime as dt
                     data_obj = dt.strptime(data_sem_aspa, '%Y-%m-%d')
                     data_pagamento_final = data_obj + timedelta(days=1)
-                except Exception as e:
-                    print(f'DEBUG erro ao parsear data: {e}')
-                    # Se não for formato data, salva string sem aspa
+                except Exception:
+                    # Se não for formato data, salva como está (sem aspa)
                     data_pagamento_final = data_sem_aspa
             elif isinstance(data_pagamento_raw, (datetime,)):
                 data_pagamento_final = data_pagamento_raw
@@ -118,23 +110,19 @@ def export_xls():
         else:
             data_pagamento_final = ''
 
-        # Corrigir valor: garantir float, nunca string com aspa
+        # Corrigir valor: remover aspas simples, garantir float
         valor_raw = registro.get('valor', 0)
         if isinstance(valor_raw, str):
-            valor_sem_aspa = valor_raw.lstrip("'").strip()
+            valor_sem_aspa = str(valor_raw).lstrip("'").strip()
             try:
                 valor_final = float(valor_sem_aspa) / 100
-            except Exception as e:
-                print(f'DEBUG erro ao converter valor: {e}')
+            except Exception:
                 valor_final = 0.0
         else:
             try:
                 valor_final = float(valor_raw) / 100 if valor_raw else 0.0
-            except Exception as e:
-                print(f'DEBUG erro ao converter valor: {e}')
+            except Exception:
                 valor_final = 0.0
-        
-        print(f'DEBUG final - ID: {repr(id_final)}, DATA: {repr(data_pagamento_final)}, VALOR: {repr(valor_final)}')
 
         forma_pagamento = registro.get('formaDePagamento', '')
         forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
