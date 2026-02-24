@@ -1,6 +1,5 @@
 from flask import Blueprint, request, send_file, jsonify
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+import xlsxwriter
 from io import BytesIO
 from datetime import datetime, timedelta
 from db import get_connection
@@ -46,12 +45,12 @@ def export_xls():
     if not registros:
         return jsonify({'error': 'Nenhum registro selecionado'}), 400
 
-    # Criar workbook e worksheet
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Planilha de Importação"
+    # Criar arquivo Excel em memória com XlsxWriter
+    output = BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    worksheet = workbook.add_worksheet("Planilha de Importação")
 
-    # Definir cabeçalhos (baseado nos campos do seu formulário)
+    # Definir cabeçalhos
     headers = [
         'ID',
         'Data Pagamento',
@@ -67,29 +66,44 @@ def export_xls():
         'Status Lançamento',
         'Observação'
     ]
-    ws.append(headers)
 
-    # Estilizar cabeçalho
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    
-    for cell in ws[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-        cell.border = thin_border
+    # Formatos
+    header_format = workbook.add_format({
+        'bold': True,
+        'bg_color': '#4472C4',
+        'font_color': 'white',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter'
+    })
+
+    number_format = workbook.add_format({
+        'num_format': '0.00',
+        'border': 1,
+        'align': 'right'
+    })
+
+    date_format = workbook.add_format({
+        'num_format': 'dd/mm/yyyy',
+        'border': 1,
+        'align': 'center'
+    })
+
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left'
+    })
+
+    # Adicionar cabeçalhos
+    for col_num, header in enumerate(headers):
+        worksheet.write(0, col_num, header, header_format)
 
     # Adicionar dados
+    row_num = 1
     for registro in registros:
         # ID vem como número do frontend
-        id_final = registro.get('id', 0)
-        
+        id_final = int(registro.get('id', 0)) if registro.get('id') else 0
+
         # Data vem como string ISO (YYYY-MM-DD) do frontend
         data_pagamento_raw = registro.get('dataPagamento', '')
         data_pagamento_final = None
@@ -131,53 +145,42 @@ def export_xls():
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
-        # Adicionar linha vazia primeiro
-        ws.append([])
-        current_row = ws.max_row
-        
-        # Adicionar cada célula com tipo de dado específico, sem strings
-        ws.cell(row=current_row, column=1).value = int(id_final) if id_final else 0
-        ws.cell(row=current_row, column=1).data_type = 'n'
-        
-        ws.cell(row=current_row, column=2).value = data_pagamento_final
-        ws.cell(row=current_row, column=2).data_type = 'd'
-        
-        ws.cell(row=current_row, column=3).value = valor_final
-        ws.cell(row=current_row, column=3).data_type = 'n'
-        
-        ws.cell(row=current_row, column=4).value = forma_pagamento_normalizada
-        ws.cell(row=current_row, column=5).value = quem_paga_normalizado
-        ws.cell(row=current_row, column=6).value = obra_normalizada
-        ws.cell(row=current_row, column=7).value = registro.get('titular', '')
-        ws.cell(row=current_row, column=8).value = registro.get('cpfCnpjTitularConta', '')
-        ws.cell(row=current_row, column=9).value = registro.get('chavePix', '')
-        ws.cell(row=current_row, column=10).value = registro.get('obra', '')
-        ws.cell(row=current_row, column=11).value = categoria_nome
-        ws.cell(row=current_row, column=12).value = status
-        ws.cell(row=current_row, column=13).value = registro.get('observacao', '')
+        # Escrever dados na linha
+        worksheet.write_number(row_num, 0, id_final, text_format)  # ID
+        worksheet.write_datetime(row_num, 1, data_pagamento_final, date_format) if data_pagamento_final else worksheet.write_blank(row_num, 1, '', date_format)  # Data
+        worksheet.write_number(row_num, 2, valor_final, number_format)  # Valor
+        worksheet.write_string(row_num, 3, forma_pagamento_normalizada, text_format)  # Forma de Pagamento
+        worksheet.write_string(row_num, 4, quem_paga_normalizado, text_format)  # Quem Paga
+        worksheet.write_string(row_num, 5, obra_normalizada, text_format)  # Centro de Custo
+        worksheet.write_string(row_num, 6, registro.get('titular', ''), text_format)  # Titular
+        worksheet.write_string(row_num, 7, registro.get('cpfCnpjTitularConta', ''), text_format)  # CPF/CNPJ
+        worksheet.write_string(row_num, 8, registro.get('chavePix', ''), text_format)  # Chave Pix
+        worksheet.write_string(row_num, 9, str(registro.get('obra', '')), text_format)  # Obra
+        worksheet.write_string(row_num, 10, categoria_nome, text_format)  # Categoria
+        worksheet.write_string(row_num, 11, status, text_format)  # Status Lançamento
+        worksheet.write_string(row_num, 12, registro.get('observacao', ''), text_format)  # Observação
 
-    # Formatar coluna de valor como número com ponto decimal
-    for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
-        for cell in row:
-            cell.number_format = '0.00'
-            cell.alignment = Alignment(horizontal='right')
+        row_num += 1
 
-    # Formatar coluna de data como data completa (dd/mm/yyyy)
-    for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
-        for cell in row:
-            cell.number_format = 'dd/mm/yyyy'
+    # Ajustar largura das colunas
+    worksheet.set_column(0, 0, 10)   # ID
+    worksheet.set_column(1, 1, 15)   # Data Pagamento
+    worksheet.set_column(2, 2, 12)   # Valor
+    worksheet.set_column(3, 3, 18)   # Forma de Pagamento
+    worksheet.set_column(4, 4, 12)   # Quem Paga
+    worksheet.set_column(5, 5, 15)   # Centro de Custo
+    worksheet.set_column(6, 6, 20)   # Titular
+    worksheet.set_column(7, 7, 15)   # CPF/CNPJ
+    worksheet.set_column(8, 8, 15)   # Chave Pix
+    worksheet.set_column(9, 9, 15)   # Obra
+    worksheet.set_column(10, 10, 18) # Categoria
+    worksheet.set_column(11, 11, 18) # Status Lançamento
+    worksheet.set_column(12, 12, 25) # Observação
 
-    # Formatar coluna de ID
-    for row in ws.iter_rows(min_row=2, min_col=1, max_col=1):
-        for cell in row:
-            cell.alignment = Alignment(horizontal='left')
-
-    # Salvar arquivo em memória
-    output = BytesIO()
-    wb.save(output)
+    workbook.close()
     output.seek(0)
 
-    # Enviar arquivo como download com headers corretos
+    # Enviar arquivo como download
     return send_file(
         output,
         as_attachment=True,
