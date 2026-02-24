@@ -7,23 +7,6 @@ from db import get_connection
 
 export_bp = Blueprint('export', __name__)
 
-def set_cell_value_without_quote(cell, value, data_type=None):
-    """
-    Define o valor de uma célula sem que o openpyxl adicione aspas.
-    """
-    if data_type == 'number':
-        cell.value = float(value) if value else 0.0
-        cell.data_type = 'n'  # number
-    elif data_type == 'date':
-        cell.value = value  # datetime object
-        cell.data_type = 'd'  # date
-    elif data_type == 'integer':
-        cell.value = int(value) if value else 0
-        cell.data_type = 'n'  # number
-    else:
-        cell.value = value
-    return cell
-
 def normalize_forma_pagamento(forma_pagamento):
     """
     Normaliza a forma de pagamento para Título Case.
@@ -148,28 +131,30 @@ def export_xls():
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
-        row = [
-            id_final,
-            data_pagamento_final,
-            valor_final,
-            forma_pagamento_normalizada,
-            quem_paga_normalizado,
-            obra_normalizada,
-            registro.get('titular', ''),
-            registro.get('cpfCnpjTitularConta', ''),
-            registro.get('chavePix', ''),
-            registro.get('obra', ''),
-            categoria_nome,
-            status,
-            registro.get('observacao', '')
-        ]
-        ws.append(row)
-        
-        # Forçar tipos de dados nas células para evitar aspas adicionadas pelo openpyxl
+        # Adicionar linha vazia primeiro
+        ws.append([])
         current_row = ws.max_row
-        set_cell_value_without_quote(ws.cell(row=current_row, column=1), id_final, 'integer')
-        set_cell_value_without_quote(ws.cell(row=current_row, column=2), data_pagamento_final, 'date')
-        set_cell_value_without_quote(ws.cell(row=current_row, column=3), valor_final, 'number')
+        
+        # Adicionar cada célula com tipo de dado específico, sem strings
+        ws.cell(row=current_row, column=1).value = int(id_final) if id_final else 0
+        ws.cell(row=current_row, column=1).data_type = 'n'
+        
+        ws.cell(row=current_row, column=2).value = data_pagamento_final
+        ws.cell(row=current_row, column=2).data_type = 'd'
+        
+        ws.cell(row=current_row, column=3).value = valor_final
+        ws.cell(row=current_row, column=3).data_type = 'n'
+        
+        ws.cell(row=current_row, column=4).value = forma_pagamento_normalizada
+        ws.cell(row=current_row, column=5).value = quem_paga_normalizado
+        ws.cell(row=current_row, column=6).value = obra_normalizada
+        ws.cell(row=current_row, column=7).value = registro.get('titular', '')
+        ws.cell(row=current_row, column=8).value = registro.get('cpfCnpjTitularConta', '')
+        ws.cell(row=current_row, column=9).value = registro.get('chavePix', '')
+        ws.cell(row=current_row, column=10).value = registro.get('obra', '')
+        ws.cell(row=current_row, column=11).value = categoria_nome
+        ws.cell(row=current_row, column=12).value = status
+        ws.cell(row=current_row, column=13).value = registro.get('observacao', '')
 
     # Formatar coluna de valor como número com ponto decimal
     for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
