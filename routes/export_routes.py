@@ -87,28 +87,43 @@ def export_xls():
 
     # Adicionar dados
     for registro in registros:
-        # Valor: de centavos para reais, como número (float), sem formatação de string
-        valor_raw = registro.get('valor', 0)
-        try:
-            valor_float = float(valor_raw) / 100 if valor_raw else 0
-        except:
-            valor_float = 0.0
+        # --- LOG PARA DEBUG ---
+        # print('DEBUG registro:', registro)
+        # --- FIM LOG ---
 
-        # Status lançamento
-        status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
-
-        # Data Pagamento: corrigida para tipo data, formato dd/mm/yyyy
+        # Corrigir data: garantir datetime ou string sem aspa
         data_pagamento_raw = registro.get('dataPagamento', '')
-        data_pagamento_corrigida = ''
-        data_obj = None
+        data_pagamento_final = ''
         if data_pagamento_raw:
+            if isinstance(data_pagamento_raw, str):
+                data_sem_aspa = data_pagamento_raw.lstrip("'")
+                try:
+                    from datetime import datetime as dt
+                    data_obj = dt.strptime(data_sem_aspa, '%Y-%m-%d')
+                    data_pagamento_final = data_obj + timedelta(days=1)
+                except:
+                    # Se não for formato data, salva string sem aspa
+                    data_pagamento_final = data_sem_aspa
+            elif isinstance(data_pagamento_raw, (datetime,)):
+                data_pagamento_final = data_pagamento_raw
+            else:
+                data_pagamento_final = str(data_pagamento_raw).lstrip("'")
+        else:
+            data_pagamento_final = ''
+
+        # Corrigir valor: garantir float, nunca string com aspa
+        valor_raw = registro.get('valor', 0)
+        if isinstance(valor_raw, str):
+            valor_sem_aspa = valor_raw.lstrip("'")
             try:
-                from datetime import datetime as dt
-                data_obj = dt.strptime(str(data_pagamento_raw), '%Y-%m-%d')
-                data_corrigida = data_obj + timedelta(days=1)
-                data_pagamento_corrigida = data_corrigida
+                valor_final = float(valor_sem_aspa) / 100
             except:
-                data_pagamento_corrigida = data_pagamento_raw
+                valor_final = 0.0
+        else:
+            try:
+                valor_final = float(valor_raw) / 100
+            except:
+                valor_final = 0.0
 
         forma_pagamento = registro.get('formaDePagamento', '')
         forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
@@ -130,37 +145,13 @@ def export_xls():
             except:
                 categoria_nome = ''
 
-        # Sanitizar campos para remover aspas simples no início
-        id_sanit = str(registro.get('id', '')).lstrip("'")
-        data_pagamento_sanit = data_pagamento_corrigida
-        if isinstance(data_pagamento_sanit, str):
-            data_pagamento_sanit = data_pagamento_sanit.lstrip("'")
-        # valor_float é float, não precisa sanitizar, mas se vier string, sanitiza
-        valor_sanit = valor_float
-        if isinstance(valor_sanit, str):
-            valor_sanit = valor_sanit.lstrip("'")
-
-        # Garantir que data_pagamento_sanit seja datetime ou string sem aspas
-        if isinstance(data_pagamento_corrigida, str):
-            data_pagamento_final = data_pagamento_corrigida.lstrip("'")
-        elif data_pagamento_corrigida:
-            data_pagamento_final = data_pagamento_corrigida
-        else:
-            data_pagamento_final = ''
-
-        # Garantir que valor seja float e nunca string com aspas
-        if isinstance(valor_float, str):
-            try:
-                valor_final = float(valor_float.lstrip("'"))
-            except:
-                valor_final = 0.0
-        else:
-            valor_final = valor_float
+        # Status lançamento
+        status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
         row = [
-            id_sanit,
-            data_pagamento_final,  # tipo data ou string sem aspas
-            valor_final,           # número float, nunca string!
+            str(registro.get('id', '')).lstrip("'"),
+            data_pagamento_final,
+            valor_final,
             forma_pagamento_normalizada,
             quem_paga_normalizado,
             obra_normalizada,
