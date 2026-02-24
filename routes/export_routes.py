@@ -81,6 +81,13 @@ def export_xls():
         'border': 1,
         'align': 'left'
     })
+    
+    # ✅ NOVO: Formato para data (previne problemas de CSV)
+    date_format = workbook.add_format({
+        'border': 1,
+        'align': 'center',
+        'num_format': 'yyyy-mm-dd'
+    })
 
     # Adicionar cabeçalhos
     for col_num, header in enumerate(headers):
@@ -106,7 +113,12 @@ def export_xls():
         # Valor vem em centavos como número inteiro do frontend
         valor_raw = registro.get('valor', 0)
         try:
-            valor_final = float(valor_raw) / 100 if valor_raw else 0.0
+            # Se valor_raw for 0 ou None, usa 0.0
+            if not valor_raw:
+                valor_final = 0.0
+            else:
+                valor_num = float(valor_raw)
+                valor_final = valor_num / 100  # Divide por 100 para converter centavos para reais
         except Exception:
             valor_final = 0.0
 
@@ -133,20 +145,26 @@ def export_xls():
         # Status lançamento
         status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
-        # Escrever dados na linha - SEM FORMATAÇÃO QUE CAUSE PROBLEMAS
-        worksheet.write_number(row_num, 0, id_final)  # ID - número puro
-        worksheet.write_datetime(row_num, 1, data_pagamento_final) if data_pagamento_final else worksheet.write_blank(row_num, 1, '')  # Data - datetime puro
-        worksheet.write_number(row_num, 2, valor_final)  # Valor - número puro, sem formato
-        worksheet.write_string(row_num, 3, forma_pagamento_normalizada)  # Forma de Pagamento
-        worksheet.write_string(row_num, 4, quem_paga_normalizado)  # Quem Paga
-        worksheet.write_string(row_num, 5, obra_normalizada)  # Centro de Custo
-        worksheet.write_string(row_num, 6, registro.get('titular', ''))  # Titular
-        worksheet.write_string(row_num, 7, registro.get('cpfCnpjTitularConta', ''))  # CPF/CNPJ
-        worksheet.write_string(row_num, 8, registro.get('chavePix', ''))  # Chave Pix
-        worksheet.write_string(row_num, 9, str(registro.get('obra', '')))  # Obra
-        worksheet.write_string(row_num, 10, categoria_nome)  # Categoria
-        worksheet.write_string(row_num, 11, status)  # Status Lançamento
-        worksheet.write_string(row_num, 12, registro.get('observacao', ''))  # Observação
+        # Escrever dados na linha - USANDO write_string PARA EVITAR PROBLEMAS DE CSV
+        worksheet.write_string(row_num, 0, str(id_final).strip() if id_final else '')  # ID - como texto puro
+        # Data: se houver, escreve como datetime; se não, deixa em branco
+        if data_pagamento_final:
+            worksheet.write_datetime(row_num, 1, data_pagamento_final, date_format)  # Data com formato seguro
+        else:
+            worksheet.write_blank(row_num, 1, '', text_format)  # Data vazia com formato
+        # Valor formatado como texto para evitar ' e manter 2 casas decimais
+        valor_formatado = f"{valor_final:.2f}".replace('.', ',')
+        worksheet.write_string(row_num, 2, valor_formatado.strip())  # Valor - texto formatado
+        worksheet.write_string(row_num, 3, str(forma_pagamento_normalizada).strip())  # Forma de Pagamento
+        worksheet.write_string(row_num, 4, str(quem_paga_normalizado).strip())  # Quem Paga
+        worksheet.write_string(row_num, 5, str(obra_normalizada).strip())  # Centro de Custo
+        worksheet.write_string(row_num, 6, str(registro.get('titular', '')).strip())  # Titular
+        worksheet.write_string(row_num, 7, str(registro.get('cpfCnpjTitularConta', '')).strip())  # CPF/CNPJ
+        worksheet.write_string(row_num, 8, str(registro.get('chavePix', '')).strip())  # Chave Pix
+        worksheet.write_string(row_num, 9, str(registro.get('obra', '')).strip())  # Obra
+        worksheet.write_string(row_num, 10, str(categoria_nome).strip())  # Categoria
+        worksheet.write_string(row_num, 11, str(status).strip())  # Status Lançamento
+        worksheet.write_string(row_num, 12, str(registro.get('observacao', '')).strip())  # Observação
 
         row_num += 1
 
