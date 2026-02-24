@@ -147,10 +147,10 @@ def export_xls():
         ]
         ws.append(row)
 
-    # Formatar coluna de valor como número com vírgula decimal
+    # Formatar coluna de valor como número com ponto decimal (compatível com LibreOffice)
     for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
         for cell in row:
-            cell.number_format = '#,##0.00'
+            cell.number_format = '0.00'
             cell.alignment = Alignment(horizontal='right')
 
     # Formatar coluna de data como data completa (dd/mm/yyyy)
