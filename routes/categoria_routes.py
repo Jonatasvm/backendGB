@@ -12,7 +12,7 @@ categoria_bp = Blueprint("categoria", __name__, url_prefix="")
 
 # =====================================================
 # LISTAR (GET)
-# =====================================================
+# ======================================================
 @categoria_bp.route("/categoria", methods=["GET", "OPTIONS"])
 @cross_origin()
 def listar():
