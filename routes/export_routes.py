@@ -1,6 +1,5 @@
 from flask import Blueprint, request, send_file, jsonify
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+import xlsxwriter
 from io import BytesIO
 from datetime import datetime, timedelta
 from db import get_connection
@@ -40,163 +39,167 @@ def normalize_text_field(text):
 
 @export_bp.route('/api/export/xls', methods=['POST'])
 def export_xls():
-    try:
-        data = request.get_json()
-        registros = data.get('registros', [])
+    data = request.get_json()
+    registros = data.get('registros', [])
 
-        if not registros:
-            return jsonify({'error': 'Nenhum registro selecionado'}), 400
+    if not registros:
+        return jsonify({'error': 'Nenhum registro selecionado'}), 400
 
-        # Criar workbook e worksheet
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Planilha de Importação"
+    # Criar arquivo Excel em memória com XlsxWriter
+    output = BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    worksheet = workbook.add_worksheet("Planilha de Importação")
 
-        # Definir cabeçalhos (baseado nos campos do seu formulário)
-        headers = [
-            'ID',
-            'Data Pagamento',
-            'Valor',
-            'Forma de Pagamento',
-            'Quem Paga',
-            'Centro de Custo',
-            'Titular',
-            'CPF/CNPJ',
-            'Chave Pix',
-            'Obra',
-            'Categoria',
-            'Status Lançamento',
-            'Observação'
-        ]
-        ws.append(headers)
+    # Definir cabeçalhos
+    headers = [
+        'ID',
+        'Data Pagamento',
+        'Valor',
+        'Forma de Pagamento',
+        'Quem Paga',
+        'Centro de Custo',
+        'Titular',
+        'CPF/CNPJ',
+        'Chave Pix',
+        'Obra',
+        'Categoria',
+        'Status Lançamento',
+        'Observação'
+    ]
 
-        # Estilizar cabeçalho
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        
-        for cell in ws[1]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-            cell.border = thin_border
+    # Formatos SEM problemas de caracteres especiais
+    header_format = workbook.add_format({
+        'bold': True,
+        'bg_color': '#4472C4',
+        'font_color': 'white',
+        'border': 1,
+        'align': 'center',
+        'valign': 'vcenter'
+    })
 
-        # Adicionar dados
-        for registro in registros:
-            # Formatar valor (de centavos para reais) - SEM símbolo de moeda e SEM separador de milhar
-            valor_raw = registro.get('valor', 0)
+    text_format = workbook.add_format({
+        'border': 1,
+        'align': 'left'
+    })
+    
+    # ✅ NOVO: Formato para data (previne problemas de CSV)
+    date_format = workbook.add_format({
+        'border': 1,
+        'align': 'center',
+        'num_format': 'yyyy-mm-dd'
+    })
+
+    # Adicionar cabeçalhos
+    for col_num, header in enumerate(headers):
+        worksheet.write(0, col_num, header, header_format)
+
+    # Adicionar dados
+    row_num = 1
+    for registro in registros:
+        # ID vem como número do frontend
+        id_final = int(registro.get('id', 0)) if registro.get('id') else 0
+
+        # Data vem como string ISO (YYYY-MM-DD) do frontend
+        data_pagamento_raw = registro.get('dataPagamento', '')
+        data_pagamento_final = None
+        if data_pagamento_raw:
             try:
-                # ✅ CORREÇÃO: Backend armazena em centavos, dividir por 100
-                valor_float = float(valor_raw) / 100 if valor_raw else 0
-                # ✅ CORREÇÃO: Formatar como string sem ponto de milhar, apenas com vírgula decimal
-                # Exemplo: 1550.00 em português fica "1550,00" (SEM ponto de milhar)
-                # Usar format de número inteiro + decimal separadamente para evitar LibreOffice adicionar ponto
-                valor_int = int(valor_float)
-                valor_dec = int(round((valor_float - valor_int) * 100))
-                valor_formatado = f"{valor_int},{valor_dec:02d}"
+                from datetime import datetime as dt
+                data_obj = dt.strptime(data_pagamento_raw, '%Y-%m-%d')
+                data_pagamento_final = data_obj + timedelta(days=1)
+            except Exception:
+                data_pagamento_final = None
+
+        # Valor vem em CENTAVOS do frontend (já convertido pelo adapter)
+        valor_raw = registro.get('valor', 0)
+        try:
+            if not valor_raw:
+                valor_final = 0.0
+            else:
+                valor_num = float(valor_raw)
+                # ✅ CORREÇÃO: Valor vem em CENTAVOS, dividir por 100 para reais
+                valor_final = valor_num / 100
+        except Exception:
+            valor_final = 0.0
+
+        forma_pagamento = registro.get('formaDePagamento', '')
+        forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
+        quem_paga_normalizado = 'Empresa'
+        obra_raw = registro.get('obra', '')
+        obra_normalizada = normalize_text_field(str(obra_raw)) if obra_raw else ''
+
+        categoria_nome = ''
+        categoria_raw = registro.get('categoria')
+        if categoria_raw:
+            try:
+                conn = get_connection()
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nome FROM categoria WHERE id = %s", (categoria_raw,))
+                resultado = cursor.fetchone()
+                cursor.close()
+                conn.close()
+                categoria_nome = resultado['nome'] if resultado else ''
             except:
-                valor_formatado = "0,00"
+                categoria_nome = ''
 
-            # Status lançamento
-            status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
+        # Status lançamento
+        status = "Lançado" if registro.get('lancado') == 'Y' else "Pendente"
 
-            # ✅ CORREÇÃO DE DATA: Adicionar 1 dia para compensar diferença
-            data_pagamento_raw = registro.get('dataPagamento', '')
-            data_pagamento_corrigida = ''
-            if data_pagamento_raw:
-                try:
-                    from datetime import datetime as dt
-                    data_obj = dt.strptime(str(data_pagamento_raw), '%Y-%m-%d')
-                    data_corrigida = data_obj + timedelta(days=1)
-                    data_pagamento_corrigida = data_corrigida.strftime('%Y-%m-%d')
-                except:
-                    data_pagamento_corrigida = data_pagamento_raw
+        # ✅ CORREÇÃO: Escrever dados SEM aspas no começo
+        # ID como número puro (sem ')
+        worksheet.write_number(row_num, 0, id_final)
+        
+        # Data como string formatada DD/MM/YYYY (sem ')
+        if data_pagamento_final:
+            data_str = data_pagamento_final.strftime('%d/%m/%Y')
+            worksheet.write(row_num, 1, data_str, text_format)
+        else:
+            worksheet.write(row_num, 1, '', text_format)
+        
+        # Valor como número (sem ')
+        worksheet.write_number(row_num, 2, valor_final)
+        
+        worksheet.write(row_num, 3, str(forma_pagamento_normalizada or ''))  # Forma de Pagamento
+        worksheet.write(row_num, 4, str(quem_paga_normalizado or ''))  # Quem Paga
+        worksheet.write(row_num, 5, str(obra_normalizada or ''))  # Centro de Custo
+        worksheet.write(row_num, 6, str(registro.get('titular', '') or ''))  # Titular
+        worksheet.write(row_num, 7, str(registro.get('cpfCnpjTitularConta', '') or ''))  # CPF/CNPJ
+        worksheet.write(row_num, 8, str(registro.get('chavePix', '') or ''))  # Chave Pix
+        worksheet.write(row_num, 9, str(registro.get('obra', '') or ''))  # Obra
+        worksheet.write(row_num, 10, str(categoria_nome or ''))  # Categoria
+        worksheet.write(row_num, 11, str(status or ''))  # Status Lançamento
+        worksheet.write(row_num, 12, str(registro.get('observacao', '') or ''))  # Observação
 
-            # ✅ NORMALIZAÇÃO: Forma de Pagamento (Boleto, Pix, Cheque - com primeira letra maiúscula)
-            forma_pagamento = registro.get('formaDePagamento', '')
-            forma_pagamento_normalizada = normalize_forma_pagamento(forma_pagamento)
-            
-            # ✅ NORMALIZAÇÃO: Quem Paga - "Empresa" (com E maiúsculo)
-            quem_paga_normalizado = 'Empresa'
-            
-            # ✅ NORMALIZAÇÃO: Centro de Custo (Obra) - primeira letra maiúscula
-            obra_raw = registro.get('obra', '')
-            obra_normalizada = normalize_text_field(str(obra_raw)) if obra_raw else ''
+        row_num += 1
 
-            # ✅ NOVO: Obter nome da categoria do banco de dados
-            categoria_nome = ''
-            categoria_raw = registro.get('categoria')
-            if categoria_raw:
-                try:
-                    conn = get_connection()
-                    cursor = conn.cursor(dictionary=True)
-                    cursor.execute("SELECT nome FROM categoria WHERE id = %s", (categoria_raw,))
-                    resultado = cursor.fetchone()
-                    cursor.close()
-                    conn.close()
-                    categoria_nome = resultado['nome'] if resultado else ''
-                except:
-                    categoria_nome = ''
+    # Ajustar largura das colunas
+    worksheet.set_column(0, 0, 10)   # ID
+    worksheet.set_column(1, 1, 15)   # Data Pagamento
+    worksheet.set_column(2, 2, 12)   # Valor
+    worksheet.set_column(3, 3, 18)   # Forma de Pagamento
+    worksheet.set_column(4, 4, 12)   # Quem Paga
+    worksheet.set_column(5, 5, 15)   # Centro de Custo
+    worksheet.set_column(6, 6, 20)   # Titular
+    worksheet.set_column(7, 7, 15)   # CPF/CNPJ
+    worksheet.set_column(8, 8, 15)   # Chave Pix
+    worksheet.set_column(9, 9, 15)   # Obra
+    worksheet.set_column(10, 10, 18) # Categoria
+    worksheet.set_column(11, 11, 18) # Status Lançamento
+    worksheet.set_column(12, 12, 25) # Observação
 
-            row = [
-                registro.get('id', ''),
-                data_pagamento_corrigida,
-                "'" + valor_formatado,  # ✅ CRÍTICO: Apóstrofo força Excel a tratar como texto puro (sem formatação de milhar)
-                forma_pagamento_normalizada,
-                quem_paga_normalizado,
-                obra_normalizada,
-                registro.get('titular', ''),
-                registro.get('cpfCnpjTitularConta', ''),
-                registro.get('chavePix', ''),
-                registro.get('obra', ''),
-                categoria_nome,
-                status,
-                registro.get('observacao', '')
-            ]
-            ws.append(row)
+    workbook.close()
+    output.seek(0)
 
-        # ✅ CORREÇÃO: Formatar coluna de valor como texto (não numérico) para evitar ponto de milhar
-        for row in ws.iter_rows(min_row=2, min_col=3, max_col=3):
-            for cell in row:
-                cell.number_format = '@'  # Formato de texto (evita formatação de número com ponto de milhar)
-
-        # ✅ NOVO: Formatar colunas de data com tipo "Data Completa" (dd/mm/yyyy)
-        # Coluna B é Data Pagamento (coluna 2)
-        for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
-            for cell in row:
-                cell.number_format = 'dd/mm/yyyy'  # Formato de data completa
-
-        # Ajustar largura das colunas
-        column_widths = [8, 15, 15, 20, 15, 18, 30, 20, 20, 25, 20, 15, 40]
-        for i, width in enumerate(column_widths, 1):
-            col_letter = chr(64 + i) if i <= 26 else 'A' + chr(64 + i - 26)
-            ws.column_dimensions[col_letter].width = width
-
-        # Adicionar bordas em todas as células com dados
-        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=len(headers)):
-            for cell in row:
-                cell.border = thin_border
-
-        # Salvar em memóriaa
-        output = BytesIO()
-        wb.save(output)
-        output.seek(0)
-
-        # Gerar nome do arquivo com data
-        filename = f"Planilha de Importação_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
-
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename
-        )
-
-    except Exception as e:
-        print(f"Erro ao gerar XLS: {e}")
-        return jsonify({'error': f'Erro ao gerar arquivo: {str(e)}'}), 500
+    # Enviar arquivo como download
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"lancamentos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            'Content-Disposition': f'attachment; filename="lancamentos_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx"',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+    )
