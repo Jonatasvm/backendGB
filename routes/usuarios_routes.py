@@ -53,6 +53,7 @@ def listar_usuarios():
         SELECT 
             u.id AS user_id,
             u.username,
+            u.nome,
             u.password_hash,
             u.role,
             o.id AS obra_id,
@@ -76,6 +77,7 @@ def listar_usuarios():
             usuarios_dict[uid] = {
                 "id": uid,
                 "username": row["username"],
+                "nome": row.get("nome", ""),
                 "password_hash": row["password_hash"],
                 "role": row["role"],
                 "obras": [] # Lista vazia inicial
@@ -106,12 +108,13 @@ def atualizar_usuario(user_id):
 
     data = request.get_json()
     usuario = data.get("usuario")
+    nome = data.get("nome", "")
     role = data.get("role")
     obras = data.get("obras", []) # Lista de nomes ['Obra A', 'Obra B']
     password = data.get("password") # Opcional
 
     # Chama o serviço atualizado
-    success, msg = update_user_service(user_id, usuario, role, obras, password)
+    success, msg = update_user_service(user_id, usuario, role, obras, password, nome)
     
     if not success:
         return jsonify({"error": msg}), 500

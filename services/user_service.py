@@ -13,13 +13,17 @@ def generate_token():
 # ======================================================
 # REGISTER USER (Criação)
 # ======================================================
-def register_user(username, password, role="user", obras_names=[]):
+def register_user(username, password, role="user", obras_names=[], nome=None):
     """
     Cria usuário, define role e vincula obras (se houver).
+    O username (login) é sempre armazenado em MAIÚSCULO.
     """
     allowed_roles = ["admin", "user"]
     if role not in allowed_roles:
         role = "user"
+
+    # Forçar username em maiúsculo
+    username = username.upper()
 
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
@@ -32,9 +36,9 @@ def register_user(username, password, role="user", obras_names=[]):
 
         # 2. Insere o Usuário na tabela 'users'
         cursor.execute("""
-            INSERT INTO users (username, password_hash, role)
-            VALUES (%s, %s, %s)
-        """, (username, password, role))
+            INSERT INTO users (username, password_hash, role, nome)
+            VALUES (%s, %s, %s, %s)
+        """, (username, password, role, nome or ""))
         
         user_id = cursor.lastrowid
 
@@ -60,6 +64,7 @@ def register_user(username, password, role="user", obras_names=[]):
         return {
             "id": user_id,
             "username": username,
+            "nome": nome or "",
             "role": role,
             "token": token,
             "obras": obras_names
@@ -76,16 +81,19 @@ def register_user(username, password, role="user", obras_names=[]):
 # ======================================================
 # UPDATE USER (Edição)
 # ======================================================
-def update_user_service(user_id, username, role, obras_names, password=None):
+def update_user_service(user_id, username, role, obras_names, password=None, nome=None):
     conn = get_connection()
     cursor = conn.cursor()
+
+    # Forçar username em maiúsculo
+    username = username.upper() if username else username
 
     try:
         # 1. Atualiza dados básicos (Senha é opcional)
         if password:
-            cursor.execute("UPDATE users SET username=%s, role=%s, password_hash=%s WHERE id=%s", (username, role, password, user_id))
+            cursor.execute("UPDATE users SET username=%s, role=%s, password_hash=%s, nome=%s WHERE id=%s", (username, role, password, nome or "", user_id))
         else:
-            cursor.execute("UPDATE users SET username=%s, role=%s WHERE id=%s", (username, role, user_id))
+            cursor.execute("UPDATE users SET username=%s, role=%s, nome=%s WHERE id=%s", (username, role, nome or "", user_id))
 
         # 2. Atualiza Obras (Estratégia: Limpar tudo e reinserir)
         cursor.execute("DELETE FROM users_obras WHERE user_id = %s", (user_id,))
@@ -117,8 +125,11 @@ def authenticate(username, password):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
+    # Forçar username em maiúsculo para busca
+    username = username.upper()
+
     cursor.execute("""
-        SELECT id, username, password_hash, role
+        SELECT id, username, password_hash, role, nome
         FROM users
         WHERE username = %s
     """, (username,))
@@ -147,7 +158,7 @@ def get_user_by_token(token):
     
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT id, username, role FROM users WHERE id = %s", (user_id,))
+    cursor.execute("SELECT id, username, role, nome FROM users WHERE id = %s", (user_id,))
     user = cursor.fetchone()
     cursor.close()
     conn.close()

@@ -18,6 +18,7 @@ def register():
     usuario = data.get("usuario")
     password = data.get("password")
     role = data.get("role", "user")
+    nome = data.get("nome", "")
     
     # IMPORTANTE: Captura as obras enviadas pelo Frontend
     obras = data.get("obras", []) 
@@ -26,7 +27,7 @@ def register():
         return jsonify({"error": "Campos incompletos"}), 400
 
     # Passa as obras para o serviço
-    new_user, error = register_user(usuario, password, role, obras)
+    new_user, error = register_user(usuario, password, role, obras, nome)
 
     if error:
         return jsonify({"error": error}), 409
@@ -34,6 +35,7 @@ def register():
     return jsonify({
         "message": "Usuário criado com sucesso",
         "usuario": new_user["username"],
+        "nome": new_user["nome"],
         "role": new_user["role"],
         "obras": new_user["obras"],
         "token": new_user["token"]
@@ -63,6 +65,7 @@ def login():
     return jsonify({
         "id": user["id"],
         "usuario": user["username"],
+        "nome": user.get("nome", ""),
         "role": user["role"],
         "token": user["token"]
     }), 200
