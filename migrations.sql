@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_formulario_conta ON `formulario`(`conta`);
 
 -- =====================================================
 -- Migration: Create fornecedor table
--- =====================================================
+-- =====================================================    1
 CREATE TABLE IF NOT EXISTS `fornecedor` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `titular` VARCHAR(255) NOT NULL,
