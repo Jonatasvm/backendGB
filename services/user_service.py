@@ -18,7 +18,7 @@ def register_user(username, password, role="user", obras_names=[], nome=None):
     Cria usuário, define role e vincula obras (se houver).
     O username (login) é sempre armazenado em MAIÚSCULO.
     """
-    allowed_roles = ["admin", "user"]
+    allowed_roles = ["admin", "user", "financeiro"]
     if role not in allowed_roles:
         role = "user"
 
