@@ -117,3 +117,9 @@ ALTER TABLE `formulario` ADD COLUMN IF NOT EXISTS `grupo_lancamento` VARCHAR(50)
 
 -- Create index for faster filtering
 CREATE INDEX IF NOT EXISTS idx_formulario_grupo ON `formulario`(`grupo_lancamento`);
+
+-- =====================================================
+-- Migration: Add 'financeiro' role to users table
+-- =====================================================
+-- Altera o ENUM da coluna role para incluir o novo nível 'financeiro'
+ALTER TABLE `users` MODIFY COLUMN `role` ENUM('admin', 'user', 'financeiro') NOT NULL DEFAULT 'user';
