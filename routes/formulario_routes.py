@@ -215,10 +215,10 @@ def criar_formulario():
                 else:
                     valor = float(valor) if valor else 0
                 
-                # ✅ CORREÇÃO: Converter valor para centavos antes de armazenar
-                valor_centavos = int(round(valor * 100))
+                # ✅ CORREÇÃO: O frontend já envia em centavos, NÃO multiplicar novamente
+                valor_centavos = int(round(valor))
                 
-                print(f"   → Obra {obra_id}: R$ {valor} = {valor_centavos} centavos")
+                print(f"   → Obra {obra_id}: {valor_centavos} centavos")
                 
                 if valor_centavos > 0:
                     try:
