@@ -413,7 +413,7 @@ def deletar_formulario(form_id):
     cursor = conn.cursor(dictionary=True)
     
     # ✅ Primeiro, verificar se o lançamento pertence a um grupo (múltiplo)
-    cursor.execute("SELECT id, grupo_lancamento, multiplos_lancamentos FROM formulario WHERE id = %s", (form_id,))
+    cursor.execute("SELECT id, grupo_lancamento, multiplos_lancamentos, solicitante, titular, data_lancamento FROM formulario WHERE id = %s", (form_id,))
     registro = cursor.fetchone()
     
     if not registro:
@@ -422,30 +422,60 @@ def deletar_formulario(form_id):
         return jsonify({"error": "Formulário não encontrado"}), 404
     
     grupo = registro.get("grupo_lancamento")
+    is_multiplo = registro.get("multiplos_lancamentos") == 1 or registro.get("multiplos_lancamentos") == '1'
     total_deletados = 0
+    ids_deletados = []
     
     if grupo:
-        # ✅ É lançamento múltiplo com grupo — deletar TODOS do grupo
+        # ✅ É lançamento múltiplo COM grupo_lancamento — deletar TODOS do grupo
         print(f"🗑️ Excluindo TODOS os lançamentos do grupo '{grupo}' (solicitado via ID {form_id})")
         cursor.execute("SELECT id FROM formulario WHERE grupo_lancamento = %s", (grupo,))
-        ids_grupo = [r["id"] for r in cursor.fetchall()]
-        print(f"   IDs no grupo: {ids_grupo}")
+        ids_deletados = [r["id"] for r in cursor.fetchall()]
+        print(f"   IDs no grupo: {ids_deletados}")
         
         cursor.execute("DELETE FROM formulario WHERE grupo_lancamento = %s", (grupo,))
         total_deletados = cursor.rowcount
         print(f"   ✅ {total_deletados} registros deletados do grupo '{grupo}'")
+    
+    elif is_multiplo:
+        # ✅ É lançamento múltiplo SEM grupo_lancamento (antigo) — buscar relacionados por dados
+        print(f"🗑️ Excluindo lançamento múltiplo ANTIGO (sem grupo_lancamento) ID {form_id}")
+        cursor.execute("""
+            SELECT id FROM formulario
+            WHERE multiplos_lancamentos = 1 
+            AND DATE_FORMAT(data_lancamento, '%%Y%%m%%d') = DATE_FORMAT(%s, '%%Y%%m%%d')
+            AND solicitante = %s
+            AND titular = %s
+        """, (registro["data_lancamento"], registro["solicitante"], registro["titular"]))
+        ids_deletados = [r["id"] for r in cursor.fetchall()]
+        print(f"   IDs relacionados encontrados: {ids_deletados}")
+        
+        if ids_deletados:
+            placeholders = ",".join(["%s"] * len(ids_deletados))
+            cursor.execute(f"DELETE FROM formulario WHERE id IN ({placeholders})", tuple(ids_deletados))
+            total_deletados = cursor.rowcount
+            print(f"   ✅ {total_deletados} registros deletados (múltiplo antigo)")
+        else:
+            cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
+            total_deletados = cursor.rowcount
+            ids_deletados = [form_id]
     else:
         # Lançamento simples — deletar apenas esse registro
         print(f"🗑️ Excluindo lançamento simples ID {form_id}")
         cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
         total_deletados = cursor.rowcount
+        ids_deletados = [form_id]
         print(f"   ✅ {total_deletados} registro(s) deletado(s)")
     
     conn.commit()
     cursor.close()
     conn.close()
 
-    return jsonify({"message": f"Formulário deletado ({total_deletados} registro(s) removidos)"}), 200
+    return jsonify({
+        "message": f"Formulário deletado ({total_deletados} registro(s) removidos)",
+        "ids_deletados": ids_deletados,
+        "total_deletados": total_deletados
+    }), 200
 
 
 # nova rota 
