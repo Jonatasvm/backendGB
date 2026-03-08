@@ -433,7 +433,14 @@ def deletar_formulario(form_id):
         
         # Extrair grupo_lancamento com segurança (pode ser None, '', bytes, etc.)
         grupo_raw = registro.get("grupo_lancamento")
-        grupo = str(grupo_raw).strip() if grupo_raw is not None else ""
+        # ✅ CORREÇÃO: Usar o valor raw diretamente para a query SQL (evita str(bytes) = "b'...'")
+        # Apenas decodificar se for bytes, caso contrário usar como está
+        if isinstance(grupo_raw, (bytes, bytearray)):
+            grupo = grupo_raw.decode('utf-8').strip()
+        elif grupo_raw is not None:
+            grupo = str(grupo_raw).strip()
+        else:
+            grupo = ""
         
         mult_raw = registro.get("multiplos_lancamentos")
         is_multiplo = False
@@ -443,7 +450,7 @@ def deletar_formulario(form_id):
             is_multiplo = str(mult_raw).strip() in ('1', 'true', 'True', 'yes')
         
         print(f"   registro encontrado: ID={registro['id']}")
-        print(f"   grupo_lancamento raw: {repr(grupo_raw)} → limpo: {repr(grupo)}")
+        print(f"   grupo_lancamento raw: {repr(grupo_raw)} (type={type(grupo_raw).__name__}) → limpo: {repr(grupo)}")
         print(f"   multiplos_lancamentos raw: {repr(mult_raw)} → is_multiplo: {is_multiplo}")
         
         # =====================================================
@@ -461,7 +468,9 @@ def deletar_formulario(form_id):
             cur2.close()
             print(f"   → Modo GRUPO: SELECT WHERE grupo_lancamento='{grupo}' retornou {len(ids_deletados)} IDs: {ids_deletados}")
         
-        if not ids_deletados and is_multiplo:
+        # ✅ CORREÇÃO: Se o grupo retornou apenas 1 registro (o próprio) ou nenhum, 
+        # tentar fallback por data/solicitante/titular para pegar registros órfãos
+        if (not ids_deletados or (len(ids_deletados) <= 1 and is_multiplo)) and is_multiplo:
             modo = "MÚLTIPLO ANTIGO"
             cur2b = conn.cursor(dictionary=True, buffered=True)
             cur2b.execute("""
@@ -472,9 +481,14 @@ def deletar_formulario(form_id):
                 AND titular = %s
             """, (registro["data_lancamento"], registro["solicitante"], registro["titular"]))
             rows = cur2b.fetchall()
-            ids_deletados = [r["id"] for r in rows]
+            fallback_ids = [r["id"] for r in rows]
             cur2b.close()
-            print(f"   → Modo MÚLTIPLO ANTIGO: encontrou {len(ids_deletados)} IDs: {ids_deletados}")
+            print(f"   → Modo MÚLTIPLO ANTIGO: encontrou {len(fallback_ids)} IDs: {fallback_ids}")
+            # Combinar IDs do grupo + fallback (sem duplicatas)
+            if fallback_ids:
+                combined = list(set(ids_deletados + fallback_ids))
+                ids_deletados = combined
+                print(f"   → IDs combinados (grupo + fallback): {ids_deletados}")
         
         # Fallback: pelo menos o próprio registro
         if not ids_deletados:
