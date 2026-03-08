@@ -410,91 +410,109 @@ def deletar_formulario(form_id):
         return jsonify({"status": "OK"}), 200
 
     conn = get_connection()
-    # ✅ CORREÇÃO: Usar cursor BUFFERIZADO para evitar erro "Unread result found"
-    # O cursor não-bufferizado pode falhar silenciosamente nas queries subsequentes
-    # após o primeiro fetchone(), impedindo a exclusão correta do grupo inteiro.
-    cursor = conn.cursor(dictionary=True, buffered=True)
+    
+    print(f"\n{'='*70}")
+    print(f"🗑️ DELETE /formulario/{form_id} - INÍCIO")
     
     try:
-        # Primeiro, verificar se o lançamento pertence a um grupo (múltiplo)
-        cursor.execute("SELECT id, grupo_lancamento, multiplos_lancamentos, solicitante, titular, data_lancamento FROM formulario WHERE id = %s", (form_id,))
-        registro = cursor.fetchone()
+        # =====================================================
+        # PASSO 1: Ler o registro (cursor isolado, fecha logo)
+        # =====================================================
+        cur1 = conn.cursor(dictionary=True, buffered=True)
+        cur1.execute(
+            "SELECT id, grupo_lancamento, multiplos_lancamentos, solicitante, titular, data_lancamento "
+            "FROM formulario WHERE id = %s", (form_id,)
+        )
+        registro = cur1.fetchone()
+        cur1.close()  # Fecha IMEDIATAMENTE — não reutilizar
         
         if not registro:
-            cursor.close()
             conn.close()
+            print(f"   ❌ Registro ID {form_id} não encontrado")
             return jsonify({"error": "Formulário não encontrado"}), 404
         
-        grupo = registro.get("grupo_lancamento")
-        is_multiplo = registro.get("multiplos_lancamentos") == 1 or registro.get("multiplos_lancamentos") == '1'
-        total_deletados = 0
-        ids_deletados = []
+        # Extrair grupo_lancamento com segurança (pode ser None, '', bytes, etc.)
+        grupo_raw = registro.get("grupo_lancamento")
+        grupo = str(grupo_raw).strip() if grupo_raw is not None else ""
         
-        print(f"\n{'='*70}")
-        print(f"🗑️ DELETE /formulario/{form_id}")
-        print(f"   grupo_lancamento: {repr(grupo)}")
-        print(f"   multiplos_lancamentos: {registro.get('multiplos_lancamentos')}")
-        print(f"   is_multiplo: {is_multiplo}")
+        mult_raw = registro.get("multiplos_lancamentos")
+        is_multiplo = False
+        try:
+            is_multiplo = int(mult_raw) == 1 if mult_raw is not None else False
+        except (ValueError, TypeError):
+            is_multiplo = str(mult_raw).strip() in ('1', 'true', 'True', 'yes')
+        
+        print(f"   registro encontrado: ID={registro['id']}")
+        print(f"   grupo_lancamento raw: {repr(grupo_raw)} → limpo: {repr(grupo)}")
+        print(f"   multiplos_lancamentos raw: {repr(mult_raw)} → is_multiplo: {is_multiplo}")
+        
+        # =====================================================
+        # PASSO 2: Coletar TODOS os IDs a deletar (cursor isolado)
+        # =====================================================
+        ids_deletados = []
+        modo = "SIMPLES"
         
         if grupo:
-            # ✅ É lançamento múltiplo COM grupo_lancamento — deletar TODOS do grupo
-            print(f"   → Modo: GRUPO (grupo_lancamento='{grupo}')")
-            cursor.execute("SELECT id FROM formulario WHERE grupo_lancamento = %s", (grupo,))
-            ids_deletados = [r["id"] for r in cursor.fetchall()]
-            print(f"   IDs no grupo: {ids_deletados}")
-            
-            if ids_deletados:
-                placeholders = ",".join(["%s"] * len(ids_deletados))
-                cursor.execute(f"DELETE FROM formulario WHERE id IN ({placeholders})", tuple(ids_deletados))
-                total_deletados = cursor.rowcount
-            else:
-                # Fallback: se SELECT não retornou IDs, deleta pelo grupo_lancamento direto
-                cursor.execute("DELETE FROM formulario WHERE grupo_lancamento = %s", (grupo,))
-                total_deletados = cursor.rowcount
-                ids_deletados = [form_id]
-            print(f"   ✅ {total_deletados} registros deletados do grupo '{grupo}'")
+            modo = f"GRUPO ({grupo})"
+            cur2 = conn.cursor(dictionary=True, buffered=True)
+            cur2.execute("SELECT id FROM formulario WHERE grupo_lancamento = %s", (grupo,))
+            rows = cur2.fetchall()
+            ids_deletados = [r["id"] for r in rows]
+            cur2.close()
+            print(f"   → Modo GRUPO: SELECT WHERE grupo_lancamento='{grupo}' retornou {len(ids_deletados)} IDs: {ids_deletados}")
         
-        elif is_multiplo:
-            # ✅ É lançamento múltiplo SEM grupo_lancamento (antigo) — buscar relacionados por dados
-            print(f"   → Modo: MÚLTIPLO ANTIGO (sem grupo_lancamento)")
-            cursor.execute("""
+        if not ids_deletados and is_multiplo:
+            modo = "MÚLTIPLO ANTIGO"
+            cur2b = conn.cursor(dictionary=True, buffered=True)
+            cur2b.execute("""
                 SELECT id FROM formulario
                 WHERE multiplos_lancamentos = 1 
                 AND DATE_FORMAT(data_lancamento, '%%Y%%m%%d') = DATE_FORMAT(%s, '%%Y%%m%%d')
                 AND solicitante = %s
                 AND titular = %s
             """, (registro["data_lancamento"], registro["solicitante"], registro["titular"]))
-            ids_deletados = [r["id"] for r in cursor.fetchall()]
-            print(f"   IDs relacionados encontrados: {ids_deletados}")
-            
-            if ids_deletados:
-                placeholders = ",".join(["%s"] * len(ids_deletados))
-                cursor.execute(f"DELETE FROM formulario WHERE id IN ({placeholders})", tuple(ids_deletados))
-                total_deletados = cursor.rowcount
-                print(f"   ✅ {total_deletados} registros deletados (múltiplo antigo)")
-            else:
-                cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
-                total_deletados = cursor.rowcount
-                ids_deletados = [form_id]
-        else:
-            # Lançamento simples — deletar apenas esse registro
-            print(f"   → Modo: SIMPLES")
-            cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
-            total_deletados = cursor.rowcount
+            rows = cur2b.fetchall()
+            ids_deletados = [r["id"] for r in rows]
+            cur2b.close()
+            print(f"   → Modo MÚLTIPLO ANTIGO: encontrou {len(ids_deletados)} IDs: {ids_deletados}")
+        
+        # Fallback: pelo menos o próprio registro
+        if not ids_deletados:
             ids_deletados = [form_id]
-            print(f"   ✅ {total_deletados} registro(s) deletado(s)")
+            print(f"   → Fallback: nenhum grupo encontrado, deletando apenas ID {form_id}")
+        
+        print(f"   MODO: {modo}")
+        print(f"   IDs a deletar ({len(ids_deletados)}): {ids_deletados}")
+        
+        # =====================================================
+        # PASSO 3: DELETAR todos os IDs de uma vez (cursor isolado)
+        # =====================================================
+        cur3 = conn.cursor(buffered=True)
+        placeholders = ",".join(["%s"] * len(ids_deletados))
+        sql_delete = f"DELETE FROM formulario WHERE id IN ({placeholders})"
+        print(f"   SQL: {sql_delete}")
+        print(f"   Params: {tuple(ids_deletados)}")
+        
+        cur3.execute(sql_delete, tuple(ids_deletados))
+        total_deletados = cur3.rowcount
+        cur3.close()
         
         conn.commit()
-        print(f"   ✅ COMMIT realizado. Total deletados: {total_deletados}, IDs: {ids_deletados}")
+        
+        print(f"   ✅ COMMIT OK — {total_deletados} registros efetivamente deletados")
         print(f"{'='*70}\n")
+        
     except Exception as e:
         print(f"   ❌ ERRO na exclusão: {type(e).__name__}: {e}")
-        conn.rollback()
-        cursor.close()
+        import traceback
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except:
+            pass
         conn.close()
         return jsonify({"error": f"Erro ao deletar: {str(e)}"}), 500
     
-    cursor.close()
     conn.close()
 
     return jsonify({
