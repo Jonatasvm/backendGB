@@ -138,9 +138,25 @@ def listar_formularios():
             # Manter o valor original para compatibilidade
             form["valor_principal"] = float(form.get("valor") or 0)
     
-    # ✅ Converter o campo fornecedor_novo para boolean para o frontend
+    # ✅ Verificar se cada lançamento tem fornecedor cadastrado
+    # Busca TODOS os titulares cadastrados na tabela fornecedor (por nome)
+    try:
+        cursor.execute("SELECT LOWER(TRIM(titular)) FROM fornecedor")
+        fornecedores_nomes = set(row[0] for row in cursor.fetchall() if row[0])
+    except:
+        fornecedores_nomes = set()
+    
     for form in formularios:
-        form["fornecedor_novo"] = bool(form.get("fornecedor_novo", 0))
+        # Se a coluna fornecedor_novo já está marcada como 1, usa ela
+        if form.get("fornecedor_novo") == 1:
+            form["fornecedor_novo"] = True
+        else:
+            # Senão, verifica pelo nome: se o titular NÃO existe na tabela fornecedor, marca como novo
+            titular = (form.get("titular") or "").strip().lower()
+            if titular and titular not in fornecedores_nomes:
+                form["fornecedor_novo"] = True
+            else:
+                form["fornecedor_novo"] = False
     
     cursor.close()
     conn.close()
