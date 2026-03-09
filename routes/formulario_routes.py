@@ -328,7 +328,7 @@ def criar_formulario():
             ))
             conn.commit()
             formulario_id = cursor.lastrowid
-            print(f"✅ LANÇAMENTO SIMPLES - Criado com ID {formulario_id}")
+            print(f"✅ LANÇAMENTO SIMPLES - Criado com ID {formulario_id}, fornecedor_novo={data.get('fornecedor_novo', 0)}")
     except Exception as e:
         # Se falhar (provavelmente coluna grupo_lancamento não existe), tenta sem ela
         print(f"⚠️ Erro ao inserir com grupo_lancamento: {e}")
@@ -337,8 +337,8 @@ def criar_formulario():
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
                     data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
+                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, fornecedor_novo
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
             """, (
                 data["data_lancamento"], 
                 data["solicitante"], 
@@ -355,7 +355,8 @@ def criar_formulario():
                 data["observacao"],
                 data.get("conta"),
                 data.get("categoria"),
-                data.get("multiplos_lancamentos", 0)
+                data.get("multiplos_lancamentos", 0),
+                data.get("fornecedor_novo", 0)
             ))
             conn.commit()
             formulario_id = cursor.lastrowid
