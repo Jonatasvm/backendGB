@@ -138,20 +138,9 @@ def listar_formularios():
             # Manter o valor original para compatibilidade
             form["valor_principal"] = float(form.get("valor") or 0)
     
-    # ✅ NOVO: Verificar quais titulares são fornecedores cadastrados
-    # Buscar todos os CPF/CNPJ cadastrados na tabela fornecedor
-    try:
-        cursor.execute("SELECT REPLACE(REPLACE(REPLACE(cpf_cnpj, '.', ''), '/', ''), '-', '') as cpf_limpo FROM fornecedor")
-        fornecedores_cpfs = set(row["cpf_limpo"] for row in cursor.fetchall())
-        
-        for form in formularios:
-            cpf_form = form.get("cpf_cnpj") or ""
-            cpf_limpo = ''.join(filter(str.isdigit, str(cpf_form)))
-            form["fornecedor_cadastrado"] = cpf_limpo in fornecedores_cpfs if cpf_limpo else False
-    except Exception as e:
-        print(f"⚠️ Erro ao verificar fornecedores cadastrados: {e}")
-        for form in formularios:
-            form["fornecedor_cadastrado"] = True  # Assume cadastrado em caso de erro
+    # ✅ Converter o campo fornecedor_novo para boolean para o frontend
+    for form in formularios:
+        form["fornecedor_novo"] = bool(form.get("fornecedor_novo", 0))
     
     cursor.close()
     conn.close()
@@ -189,7 +178,7 @@ def criar_formulario():
     ]
     
     # Campos opcionais
-    campos_opcionais = ["conta", "quem_paga", "categoria"]  # ✅ NOVO: Adicionados como opcionais
+    campos_opcionais = ["conta", "quem_paga", "categoria", "fornecedor_novo"]  # ✅ NOVO: Adicionados como opcionais
 
     # Validação simples
     for campo in campos:
@@ -241,8 +230,8 @@ def criar_formulario():
                             INSERT INTO formulario (
                                 data_lancamento, solicitante, titular, referente, valor, obra, 
                                 data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                                data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
+                                data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento, fornecedor_novo
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s)
                         """, (
                             data["data_lancamento"], 
                             data["solicitante"], 
@@ -260,7 +249,8 @@ def criar_formulario():
                             data.get("conta"),
                             data.get("categoria"),
                             data.get("multiplos_lancamentos", 0),
-                            grupo_lancamento  # Mesmo grupo para todas
+                            grupo_lancamento,  # Mesmo grupo para todas
+                            data.get("fornecedor_novo", 0)
                         ))
                         conn.commit()
                         formulario_id = cursor.lastrowid
@@ -314,8 +304,8 @@ def criar_formulario():
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
                     data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s)
+                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento, fornecedor_novo
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s)
             """, (
                 data["data_lancamento"], 
                 data["solicitante"], 
@@ -333,7 +323,8 @@ def criar_formulario():
                 data.get("conta"),
                 data.get("categoria"),
                 data.get("multiplos_lancamentos", 0),
-                grupo_lancamento
+                grupo_lancamento,
+                data.get("fornecedor_novo", 0)
             ))
             conn.commit()
             formulario_id = cursor.lastrowid
@@ -389,7 +380,7 @@ def atualizar_formulario(form_id):
         "data_lancamento", "solicitante", "titular", "referente",
         "valor", "obra", "data_pagamento", "forma_pagamento",
         "lancado", "cpf_cnpj", "chave_pix", "data_competencia",
-        "observacao", "conta", "link_anexo", "categoria" # Incluídos campos opcionais
+        "observacao", "conta", "link_anexo", "categoria", "fornecedor_novo" # Incluídos campos opcionais
     ]
 
     # Atualiza apenas os campos enviados

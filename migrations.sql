@@ -123,3 +123,9 @@ CREATE INDEX IF NOT EXISTS idx_formulario_grupo ON `formulario`(`grupo_lancament
 -- =====================================================
 -- Altera o ENUM da coluna role para incluir o novo nível 'financeiro'
 ALTER TABLE `users` MODIFY COLUMN `role` ENUM('admin', 'user', 'financeiro') NOT NULL DEFAULT 'user';
+
+-- =====================================================
+-- Migration: Add fornecedor_novo flag to formulario
+-- =====================================================
+-- Flag para indicar que o lançamento foi feito com fornecedor digitado manualmente (não cadastrado)
+ALTER TABLE `formulario` ADD COLUMN IF NOT EXISTS `fornecedor_novo` TINYINT(1) DEFAULT 0;
