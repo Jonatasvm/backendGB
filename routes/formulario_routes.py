@@ -138,6 +138,21 @@ def listar_formularios():
             # Manter o valor original para compatibilidade
             form["valor_principal"] = float(form.get("valor") or 0)
     
+    # ✅ NOVO: Verificar quais titulares são fornecedores cadastrados
+    # Buscar todos os CPF/CNPJ cadastrados na tabela fornecedor
+    try:
+        cursor.execute("SELECT REPLACE(REPLACE(REPLACE(cpf_cnpj, '.', ''), '/', ''), '-', '') as cpf_limpo FROM fornecedor")
+        fornecedores_cpfs = set(row["cpf_limpo"] for row in cursor.fetchall())
+        
+        for form in formularios:
+            cpf_form = form.get("cpf_cnpj") or ""
+            cpf_limpo = ''.join(filter(str.isdigit, str(cpf_form)))
+            form["fornecedor_cadastrado"] = cpf_limpo in fornecedores_cpfs if cpf_limpo else False
+    except Exception as e:
+        print(f"⚠️ Erro ao verificar fornecedores cadastrados: {e}")
+        for form in formularios:
+            form["fornecedor_cadastrado"] = True  # Assume cadastrado em caso de erro
+    
     cursor.close()
     conn.close()
     return jsonify(formularios), 200
