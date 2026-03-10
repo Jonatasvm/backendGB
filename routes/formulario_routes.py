@@ -140,33 +140,26 @@ def listar_formularios():
     
     # ✅ Verificar se cada lançamento tem fornecedor cadastrado
     # Busca TODOS os titulares cadastrados na tabela fornecedor (por nome)
+    fornecedores_nomes = set()
     try:
         cursor.execute("SELECT LOWER(TRIM(titular)) AS nome FROM fornecedor")
-        fornecedores_nomes = set(row["nome"] for row in cursor.fetchall() if row.get("nome"))
-    except:
+        rows = cursor.fetchall()
+        fornecedores_nomes = set(row["nome"] for row in rows if row.get("nome"))
+        print(f"📋 Fornecedores cadastrados ({len(fornecedores_nomes)}): {list(fornecedores_nomes)[:10]}...")
+    except Exception as e_forn:
+        print(f"⚠️ Erro ao buscar fornecedores: {e_forn}")
         fornecedores_nomes = set()
     
     for form in formularios:
-        # Verificar flag fornecedor_novo do banco (pode vir como int, bytes, bool, etc.)
-        flag_raw = form.get("fornecedor_novo")
-        flag_is_set = False
-        try:
-            if isinstance(flag_raw, (bytes, bytearray)):
-                flag_is_set = int.from_bytes(flag_raw, 'big') == 1
-            elif flag_raw is not None:
-                flag_is_set = int(flag_raw) == 1
-        except (ValueError, TypeError):
-            flag_is_set = False
+        titular = (form.get("titular") or "").strip().lower()
         
-        if flag_is_set:
+        # Verificação simples: o titular existe na tabela de fornecedores?
+        if titular and titular in fornecedores_nomes:
+            form["fornecedor_novo"] = False
+        elif titular:
             form["fornecedor_novo"] = True
         else:
-            # Verifica pelo nome: se o titular NÃO existe na tabela fornecedor, marca como novo
-            titular = (form.get("titular") or "").strip().lower()
-            if titular and titular not in fornecedores_nomes:
-                form["fornecedor_novo"] = True
-            else:
-                form["fornecedor_novo"] = False
+            form["fornecedor_novo"] = False
     
     cursor.close()
     conn.close()
