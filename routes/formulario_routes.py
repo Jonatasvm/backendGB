@@ -141,17 +141,27 @@ def listar_formularios():
     # ✅ Verificar se cada lançamento tem fornecedor cadastrado
     # Busca TODOS os titulares cadastrados na tabela fornecedor (por nome)
     try:
-        cursor.execute("SELECT LOWER(TRIM(titular)) FROM fornecedor")
-        fornecedores_nomes = set(row[0] for row in cursor.fetchall() if row[0])
+        cursor.execute("SELECT LOWER(TRIM(titular)) AS nome FROM fornecedor")
+        fornecedores_nomes = set(row["nome"] for row in cursor.fetchall() if row.get("nome"))
     except:
         fornecedores_nomes = set()
     
     for form in formularios:
-        # Se a coluna fornecedor_novo já está marcada como 1, usa ela
-        if form.get("fornecedor_novo") == 1:
+        # Verificar flag fornecedor_novo do banco (pode vir como int, bytes, bool, etc.)
+        flag_raw = form.get("fornecedor_novo")
+        flag_is_set = False
+        try:
+            if isinstance(flag_raw, (bytes, bytearray)):
+                flag_is_set = int.from_bytes(flag_raw, 'big') == 1
+            elif flag_raw is not None:
+                flag_is_set = int(flag_raw) == 1
+        except (ValueError, TypeError):
+            flag_is_set = False
+        
+        if flag_is_set:
             form["fornecedor_novo"] = True
         else:
-            # Senão, verifica pelo nome: se o titular NÃO existe na tabela fornecedor, marca como novo
+            # Verifica pelo nome: se o titular NÃO existe na tabela fornecedor, marca como novo
             titular = (form.get("titular") or "").strip().lower()
             if titular and titular not in fornecedores_nomes:
                 form["fornecedor_novo"] = True
