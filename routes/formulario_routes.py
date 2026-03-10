@@ -173,6 +173,10 @@ def listar_formularios():
     
     print(f"{'='*70}\n")
     
+    # ✅ MARCA DE VERSÃO: Se este campo aparecer no JSON, o código novo está rodando
+    total_novos = sum(1 for f in formularios if f.get("fornecedor_novo") == True)
+    print(f"📊 RESUMO: {total_novos} fornecedores marcados como NOVO de {len(formularios)} total")
+    
     cursor.close()
     conn.close()
     return jsonify(formularios), 200
