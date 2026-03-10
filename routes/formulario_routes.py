@@ -176,7 +176,7 @@ def criar_formulario():
 
     data = request.get_json()
     
-    # ✅ DEBUG: Log completo do payload recebido
+    # ✅ DEBUG: Log completo do payload recebido 
     print("\n" + "="*70)
     print("📥 POST /formulario - Payload recebido:")
     print(f"  multiplos_lancamentos: {data.get('multiplos_lancamentos')}")
