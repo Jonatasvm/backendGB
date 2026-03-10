@@ -150,16 +150,28 @@ def listar_formularios():
         print(f"⚠️ Erro ao buscar fornecedores: {e_forn}")
         fornecedores_nomes = set()
     
+    print(f"\n{'='*70}")
+    print(f"🔍 DEBUG FORNECEDOR_NOVO - Verificando {len(formularios)} formulários")
+    print(f"📋 Total fornecedores na tabela: {len(fornecedores_nomes)}")
+    print(f"📋 Nomes cadastrados: {list(fornecedores_nomes)[:20]}")
+    print(f"{'='*70}")
+    
     for form in formularios:
-        titular = (form.get("titular") or "").strip().lower()
+        titular_raw = form.get("titular") or ""
+        titular = titular_raw.strip().lower()
         
         # Verificação simples: o titular existe na tabela de fornecedores?
         if titular and titular in fornecedores_nomes:
             form["fornecedor_novo"] = False
+            print(f"  ✅ ID={form.get('id')} | titular='{titular_raw}' → ENCONTRADO na tabela fornecedor | fornecedor_novo=False")
         elif titular:
             form["fornecedor_novo"] = True
+            print(f"  🔴 ID={form.get('id')} | titular='{titular_raw}' → NÃO ENCONTRADO | fornecedor_novo=True")
         else:
             form["fornecedor_novo"] = False
+            print(f"  ⚪ ID={form.get('id')} | titular VAZIO | fornecedor_novo=False")
+    
+    print(f"{'='*70}\n")
     
     cursor.close()
     conn.close()
