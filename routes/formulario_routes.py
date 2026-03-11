@@ -3,6 +3,7 @@ from flask_cors import cross_origin
 from db import get_connection
 from services.google_drive_service import upload_files_batch, create_folder
 import json
+import sys
 
 formulario_bp = Blueprint("formulario", __name__)
 
@@ -145,16 +146,16 @@ def listar_formularios():
         cursor.execute("SELECT LOWER(TRIM(titular)) AS nome FROM fornecedor")
         rows = cursor.fetchall()
         fornecedores_nomes = set(row["nome"] for row in rows if row.get("nome"))
-        print(f"📋 Fornecedores cadastrados ({len(fornecedores_nomes)}): {list(fornecedores_nomes)[:10]}...")
+        print(f"📋 Fornecedores cadastrados ({len(fornecedores_nomes)}): {list(fornecedores_nomes)[:10]}...", file=sys.stderr, flush=True)
     except Exception as e_forn:
-        print(f"⚠️ Erro ao buscar fornecedores: {e_forn}")
+        print(f"⚠️ Erro ao buscar fornecedores: {e_forn}", file=sys.stderr, flush=True)
         fornecedores_nomes = set()
     
-    print(f"\n{'='*70}")
-    print(f"🔍 DEBUG FORNECEDOR_NOVO - Verificando {len(formularios)} formulários")
-    print(f"📋 Total fornecedores na tabela: {len(fornecedores_nomes)}")
-    print(f"📋 Nomes cadastrados: {list(fornecedores_nomes)[:20]}")
-    print(f"{'='*70}")
+    print(f"\n{'='*70}", file=sys.stderr, flush=True)
+    print(f"🔍 DEBUG FORNECEDOR_NOVO - Verificando {len(formularios)} formulários", file=sys.stderr, flush=True)
+    print(f"📋 Total fornecedores na tabela: {len(fornecedores_nomes)}", file=sys.stderr, flush=True)
+    print(f"📋 Nomes cadastrados: {list(fornecedores_nomes)[:20]}", file=sys.stderr, flush=True)
+    print(f"{'='*70}", file=sys.stderr, flush=True)
     
     for form in formularios:
         titular_raw = form.get("titular") or ""
@@ -163,19 +164,19 @@ def listar_formularios():
         # Verificação simples: o titular existe na tabela de fornecedores?
         if titular and titular in fornecedores_nomes:
             form["fornecedor_novo"] = False
-            print(f"  ✅ ID={form.get('id')} | titular='{titular_raw}' → ENCONTRADO na tabela fornecedor | fornecedor_novo=False")
+            print(f"  ✅ ID={form.get('id')} | titular='{titular_raw}' → ENCONTRADO na tabela fornecedor | fornecedor_novo=False", file=sys.stderr, flush=True)
         elif titular:
             form["fornecedor_novo"] = True
-            print(f"  🔴 ID={form.get('id')} | titular='{titular_raw}' → NÃO ENCONTRADO | fornecedor_novo=True")
+            print(f"  🔴 ID={form.get('id')} | titular='{titular_raw}' → NÃO ENCONTRADO | fornecedor_novo=True", file=sys.stderr, flush=True)
         else:
             form["fornecedor_novo"] = False
-            print(f"  ⚪ ID={form.get('id')} | titular VAZIO | fornecedor_novo=False")
+            print(f"  ⚪ ID={form.get('id')} | titular VAZIO | fornecedor_novo=False", file=sys.stderr, flush=True)
     
-    print(f"{'='*70}\n")
+    print(f"{'='*70}\n", file=sys.stderr, flush=True)
     
     # ✅ MARCA DE VERSÃO: Se este campo aparecer no JSON, o código novo está rodando
     total_novos = sum(1 for f in formularios if f.get("fornecedor_novo") == True)
-    print(f"📊 RESUMO: {total_novos} fornecedores marcados como NOVO de {len(formularios)} total")
+    print(f"📊 RESUMO: {total_novos} fornecedores marcados como NOVO de {len(formularios)} total", file=sys.stderr, flush=True)
     
     cursor.close()
     conn.close()
@@ -193,13 +194,13 @@ def criar_formulario():
     data = request.get_json()
     
     # ✅ DEBUG: Log completo do payload recebido 
-    print("\n" + "="*70)
-    print("📥 POST /formulario - Payload recebido:")
-    print(f"  multiplos_lancamentos: {data.get('multiplos_lancamentos')}")
-    print(f"  obras_adicionais: {data.get('obras_adicionais')}")
-    print(f"  obra (principal): {data.get('obra')}")
-    print(f"  valor (total): {data.get('valor')}")
-    print("="*70)
+    print("\n" + "="*70, file=sys.stderr, flush=True)
+    print("📥 POST /formulario - Payload recebido:", file=sys.stderr, flush=True)
+    print(f"  multiplos_lancamentos: {data.get('multiplos_lancamentos')}", file=sys.stderr, flush=True)
+    print(f"  obras_adicionais: {data.get('obras_adicionais')}", file=sys.stderr, flush=True)
+    print(f"  obra (principal): {data.get('obra')}", file=sys.stderr, flush=True)
+    print(f"  valor (total): {data.get('valor')}", file=sys.stderr, flush=True)
+    print("="*70, file=sys.stderr, flush=True)
     
     # --- CORREÇÃO DE LÓGICA: Não forçar '0', mas aceitar o valor do payload ('Y') ---
     # Assume 'N' como default se o campo 'lancado' não vier no payload
@@ -363,10 +364,10 @@ def criar_formulario():
             ))
             conn.commit()
             formulario_id = cursor.lastrowid
-            print(f"✅ LANÇAMENTO SIMPLES - Criado com ID {formulario_id}, fornecedor_novo={data.get('fornecedor_novo', 0)}")
+            print(f"✅ LANÇAMENTO SIMPLES - Criado com ID {formulario_id}, fornecedor_novo={data.get('fornecedor_novo', 0)}", file=sys.stderr, flush=True)
     except Exception as e:
         # Se falhar (provavelmente coluna grupo_lancamento não existe), tenta sem ela
-        print(f"⚠️ Erro ao inserir com grupo_lancamento: {e}")
+        print(f"⚠️ Erro ao inserir com grupo_lancamento: {e}", file=sys.stderr, flush=True)
         if not (data.get("multiplos_lancamentos") and data.get("obras_adicionais")):
             cursor.execute("""
                 INSERT INTO formulario (
