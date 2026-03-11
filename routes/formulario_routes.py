@@ -45,6 +45,14 @@ def buscar_titulares():
         conn.close()
 
 # ===========================
+# ENDPOINT DE TESTE - Confirma que o código novo está rodando
+# ===========================
+@formulario_bp.route("/formulario/version", methods=["GET"])
+@cross_origin()
+def version_check():
+    return jsonify({"version": "2026-03-11-stderr", "fornecedor_novo_ativo": True}), 200
+
+# ===========================
 # LISTAR TODOS OS FORMULÁRIOS (GET)
 # ===========================
 @formulario_bp.route("/formulario", methods=["GET", "OPTIONS"])
