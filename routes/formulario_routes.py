@@ -342,8 +342,8 @@ def criar_formulario():
         else:
             # Inserir o lançamento principal (para lançamentos simples, não múltiplos)
             print(f"✅ LANÇAMENTO SIMPLES (não múltiplo)")
-            # ✅ CORREÇÃO: Converter valor para centavos antes de armazenar
-            valor_centavos = int(round(float(data.get("valor", 0)) * 100))
+            # ✅ CORREÇÃO: O frontend já envia o valor em CENTAVOS, NÃO multiplicar novamente
+            valor_centavos = int(round(float(data.get("valor", 0))))
             cursor.execute("""
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
