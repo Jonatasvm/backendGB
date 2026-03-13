@@ -6,8 +6,9 @@ import json
 import sys
 from datetime import datetime, timedelta, timezone
 
-# ✅ Timezone de Brasília (UTC-3)
-BRASILIA_TZ = timezone(timedelta(hours=-3))
+# ✅ Timezone ajustado: servidor MySQL está em UTC+1, Brasília é UTC-3
+# Diferença total = -4 horas em relação ao horário do servidor
+BRASILIA_TZ = timezone(timedelta(hours=-4))
 
 formulario_bp = Blueprint("formulario", __name__)
 
