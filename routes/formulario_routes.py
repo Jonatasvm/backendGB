@@ -4,6 +4,10 @@ from db import get_connection
 from services.google_drive_service import upload_files_batch, create_folder
 import json
 import sys
+from datetime import datetime, timedelta, timezone
+
+# ✅ Timezone de Brasília (UTC-3)
+BRASILIA_TZ = timezone(timedelta(hours=-3))
 
 formulario_bp = Blueprint("formulario", __name__)
 
@@ -99,13 +103,24 @@ def listar_formularios():
                 except:
                     form[date_field] = str(form[date_field]) if form[date_field] else None
         
-        # ✅ Carimbo: preservar data E hora (DATETIME completo)
+        # ✅ Carimbo: converter de UTC (servidor) para horário de Brasília (UTC-3)
         if "carimbo" in form and form["carimbo"] is not None:
             try:
                 if hasattr(form["carimbo"], 'strftime'):
-                    form["carimbo"] = form["carimbo"].strftime('%Y-%m-%dT%H:%M:%S')
+                    # O MySQL retorna datetime naive (sem timezone) em UTC
+                    # Converter para Brasília subtraindo 3 horas
+                    dt_utc = form["carimbo"].replace(tzinfo=timezone.utc)
+                    dt_brasilia = dt_utc.astimezone(BRASILIA_TZ)
+                    form["carimbo"] = dt_brasilia.strftime('%Y-%m-%dT%H:%M:%S')
                 else:
-                    form["carimbo"] = str(form["carimbo"])
+                    # Se for string, tenta fazer o parse e converter
+                    dt_str = str(form["carimbo"])
+                    try:
+                        dt_utc = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+                        dt_brasilia = dt_utc.astimezone(BRASILIA_TZ)
+                        form["carimbo"] = dt_brasilia.strftime('%Y-%m-%dT%H:%M:%S')
+                    except:
+                        form["carimbo"] = dt_str
             except:
                 form["carimbo"] = str(form["carimbo"]) if form["carimbo"] else None
         
