@@ -89,7 +89,7 @@ def listar_formularios():
             form["valor"] = float(form["valor"])
         
         # ✅ NOVO: Converter datas para string ISO (YYYY-MM-DD)
-        for date_field in ["data_pagamento", "data_lancamento", "data_competencia", "carimbo"]:
+        for date_field in ["data_pagamento", "data_lancamento", "data_competencia"]:
             if date_field in form and form[date_field] is not None:
                 try:
                     if hasattr(form[date_field], 'strftime'):
@@ -98,6 +98,16 @@ def listar_formularios():
                         form[date_field] = str(form[date_field])
                 except:
                     form[date_field] = str(form[date_field]) if form[date_field] else None
+        
+        # ✅ Carimbo: preservar data E hora (DATETIME completo)
+        if "carimbo" in form and form["carimbo"] is not None:
+            try:
+                if hasattr(form["carimbo"], 'strftime'):
+                    form["carimbo"] = form["carimbo"].strftime('%Y-%m-%dT%H:%M:%S')
+                else:
+                    form["carimbo"] = str(form["carimbo"])
+            except:
+                form["carimbo"] = str(form["carimbo"]) if form["carimbo"] else None
         
         obras_relacionadas = []
         
