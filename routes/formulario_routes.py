@@ -66,6 +66,9 @@ def listar_formularios():
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
 
+    # Novo filtro: codigo de barra (chave_pix) status
+    codigo_barra_status = request.args.get("codigo_barra_status", "todos")
+    
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     
@@ -211,6 +214,23 @@ def listar_formularios():
     # ✅ MARCA DE VERSÃO: Se este campo aparecer no JSON, o código novo está rodando
     total_novos = sum(1 for f in formularios if f.get("fornecedor_novo") == True)
     print(f"📊 RESUMO: {total_novos} fornecedores marcados como NOVO de {len(formularios)} total", file=sys.stderr, flush=True)
+    
+    # === APLICAR FILTRO DE CODIGO DE BARRA (após carregar todos os dados) ===
+    if codigo_barra_status in ("vazio", "preenchido"):
+        def is_boleto_sem_codigo(form):
+            return (
+                str(form.get("forma_pagamento", "")).strip().lower() == "boleto"
+                and not (form.get("chave_pix") or "").strip()
+            )
+        def is_boleto_com_codigo(form):
+            return (
+                str(form.get("forma_pagamento", "")).strip().lower() == "boleto"
+                and bool((form.get("chave_pix") or "").strip())
+            )
+        if codigo_barra_status == "vazio":
+            formularios = [f for f in formularios if is_boleto_sem_codigo(f)]
+        elif codigo_barra_status == "preenchido":
+            formularios = [f for f in formularios if is_boleto_com_codigo(f)]
     
     cursor.close()
     conn.close()
