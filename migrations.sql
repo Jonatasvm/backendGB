@@ -129,3 +129,10 @@ ALTER TABLE `users` MODIFY COLUMN `role` ENUM('admin', 'user', 'financeiro') NOT
 -- =====================================================
 -- Flag para indicar que o lançamento foi feito com fornecedor digitado manualmente (não cadastrado)
 ALTER TABLE `formulario` ADD COLUMN IF NOT EXISTS `fornecedor_novo` TINYINT(1) DEFAULT 0;
+
+-- =====================================================
+-- Migration: Expand chave_pix to support PIX Copia e Cola (up to 500 chars)
+-- =====================================================
+-- PIX híbrido/Copia e Cola pode ter entre 150 e 500 caracteres
+ALTER TABLE `formulario` MODIFY COLUMN `chave_pix` VARCHAR(600);
+ALTER TABLE `fornecedor` MODIFY COLUMN `chave_pix` VARCHAR(600);
