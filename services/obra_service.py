@@ -46,10 +46,17 @@ def listar_obras():
     cursor.execute("SELECT * FROM obras")
     obras = cursor.fetchall()
 
-    # Busca vínculos de usuários para cada obra
+    # Busca vínculos de usuários com nome para cada obra
     for obra in obras:
-        cursor.execute("SELECT user_id FROM users_obras WHERE obra_id = %s", (obra['id'],))
-        obra['user_ids'] = [row['user_id'] for row in cursor.fetchall()]
+        cursor.execute("""
+            SELECT u.id, u.nome, u.username 
+            FROM users u 
+            JOIN users_obras uo ON u.id = uo.user_id 
+            WHERE uo.obra_id = %s
+        """, (obra['id'],))
+        users = cursor.fetchall()
+        obra['user_ids'] = [u['id'] for u in users]
+        obra['users'] = users
 
     cursor.close()
     conn.close()

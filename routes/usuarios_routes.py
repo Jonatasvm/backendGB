@@ -32,6 +32,25 @@ def require_admin():
 
 
 # ======================================================
+# ======================================================
+# LISTAR USUÁRIOS SIMPLIFICADO (GET) - Apenas id e nome
+# ======================================================
+@usuarios_bp.route("/usuarios/lista", methods=["GET", "OPTIONS"])
+@cross_origin()
+def listar_usuarios_simples():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, nome, username FROM users ORDER BY nome")
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(users), 200
+
+
+# ======================================================
 # LISTAR USUÁRIOS (GET) - COM OBRAS AGRUPADAS
 # ======================================================
 @usuarios_bp.route("/usuarios", methods=["GET", "OPTIONS"])
