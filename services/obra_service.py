@@ -1,7 +1,7 @@
 from db import get_connection
 from flask import jsonify # Adicionado para garantir que jsonify está disponível se necessário, embora não seja estritamente necessário aqui.
 
-def criar_obra(nome, user_id, quem_paga, banco_id=None):
+def criar_obra(nome, user_id, quem_paga, banco_id=None, user_ids=None):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -18,17 +18,22 @@ def criar_obra(nome, user_id, quem_paga, banco_id=None):
     conn.commit()
     obra_id = cursor.lastrowid
 
-    # 3. Vincula ao Usuário (se enviado)
-    if user_id:
+    # 3. Vincula múltiplos usuários (se enviado)
+    ids_to_link = []
+    if user_ids and isinstance(user_ids, list):
+        ids_to_link = user_ids
+    elif user_id:
+        ids_to_link = [user_id]
+
+    for uid in ids_to_link:
         try:
-            cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+            cursor.execute("SELECT id FROM users WHERE id = %s", (uid,))
             user_exists = cursor.fetchone()
-            
             if user_exists:
-                cursor.execute("INSERT INTO users_obras (user_id, obra_id) VALUES (%s, %s)", (user_id, obra_id))
-                conn.commit()
+                cursor.execute("INSERT INTO users_obras (user_id, obra_id) VALUES (%s, %s)", (uid, obra_id))
         except Exception as e:
-            print(f"Aviso: Obra criada, mas falha ao vincular usuário: {e}")
+            print(f"Aviso: Obra criada, mas falha ao vincular usuário {uid}: {e}")
+    conn.commit()
 
     cursor.close()
     conn.close()
@@ -40,11 +45,17 @@ def listar_obras():
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM obras")
     obras = cursor.fetchall()
+
+    # Busca vínculos de usuários para cada obra
+    for obra in obras:
+        cursor.execute("SELECT user_id FROM users_obras WHERE obra_id = %s", (obra['id'],))
+        obra['user_ids'] = [row['user_id'] for row in cursor.fetchall()]
+
     cursor.close()
     conn.close()
     return obras
 
-def atualizar_obra(obra_id, novo_nome, novo_quem_paga, banco_id=None):
+def atualizar_obra(obra_id, novo_nome, novo_quem_paga, banco_id=None, user_ids=None):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
@@ -63,9 +74,19 @@ def atualizar_obra(obra_id, novo_nome, novo_quem_paga, banco_id=None):
         SET nome = %s, quem_paga = %s, banco_id = %s 
         WHERE id = %s
     """, (novo_nome, novo_quem_paga, banco_id, obra_id))
+
+    # 3. Atualiza vínculos de usuários (se enviado)
+    if user_ids is not None:
+        cursor.execute("DELETE FROM users_obras WHERE obra_id = %s", (obra_id,))
+        for uid in user_ids:
+            try:
+                cursor.execute("INSERT INTO users_obras (user_id, obra_id) VALUES (%s, %s)", (uid, obra_id))
+            except Exception as e:
+                print(f"Aviso: Falha ao vincular usuário {uid} à obra {obra_id}: {e}")
+
     conn.commit()
 
-    # 3. Retorna atualizado
+    # 4. Retorna atualizado
     cursor.execute("SELECT * FROM obras WHERE id = %s", (obra_id,))
     obra_atualizada = cursor.fetchone()
 
