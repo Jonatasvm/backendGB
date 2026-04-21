@@ -644,11 +644,14 @@ def listar_titulares_distinct():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # Busca todos os titulares distintos da tabela 'formulario'
+    # Busca titulares da tabela 'fornecedor' (cadastros) + titulares usados em formulários
     sql_query = """
-        SELECT DISTINCT titular 
-        FROM formulario
-        WHERE titular IS NOT NULL AND titular != ''
+        SELECT DISTINCT titular
+        FROM (
+            SELECT TRIM(titular) AS titular FROM fornecedor WHERE TRIM(titular) != ''
+            UNION
+            SELECT TRIM(titular) AS titular FROM formulario WHERE titular IS NOT NULL AND TRIM(titular) != ''
+        ) AS todos
         ORDER BY titular ASC
     """
     
