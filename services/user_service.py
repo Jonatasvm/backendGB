@@ -34,11 +34,12 @@ def register_user(username, password, role="user", obras_names=[], nome=None):
         if cursor.fetchone():
             return None, "Usuário já existe"
 
-        # 2. Insere o Usuário na tabela 'users'
+        # 2. Insere o Usuário na tabela 'users' com UUID
+        uuid_val = str(uuid.uuid4())
         cursor.execute("""
-            INSERT INTO users (username, password_hash, role, nome)
-            VALUES (%s, %s, %s, %s)
-        """, (username, password, role, nome or ""))
+            INSERT INTO users (uuid_id, username, password_hash, role, nome)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (uuid_val, username, password, role, nome or ""))
         
         user_id = cursor.lastrowid
 
