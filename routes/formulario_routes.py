@@ -58,7 +58,180 @@ def version_check():
     return jsonify({"version": "2026-03-11-stderr", "fornecedor_novo_ativo": True}), 200
 
 # ===========================
-# LISTAR TODOS OS FORMULÁRIOS (GET)
+# MAPEAMENTO DE ORDENAÇÃO (frontend → SQL)
+# ===========================
+ORDER_MAP = {
+    "id_asc": "id ASC",
+    "id_desc": "id DESC",
+    "valor_asc": "valor ASC",
+    "valor_desc": "valor DESC",
+    "titular_asc": "titular ASC",
+    "titular_desc": "titular DESC",
+    "referente_asc": "referente ASC",
+    "referente_desc": "referente DESC",
+    "dataLancamento_asc": "data_lancamento ASC",
+    "dataLancamento_desc": "data_lancamento DESC",
+    "dataPagamento_asc": "data_pagamento ASC",
+    "dataPagamento_desc": "data_pagamento DESC",
+}
+
+# ===========================
+# FUNÇÕES AUXILIARES (pós-processamento)
+# ===========================
+def _postprocess_formulario(form, brasilia_tz):
+    """Converte tipos de dados de um formulário para JSON-safe."""
+    # Converter Decimal para float
+    if "valor" in form and form["valor"] is not None:
+        form["valor"] = float(form["valor"])
+    
+    # Converter datas para string ISO (YYYY-MM-DD)
+    for date_field in ["data_pagamento", "data_lancamento", "data_competencia"]:
+        if date_field in form and form[date_field] is not None:
+            try:
+                if hasattr(form[date_field], 'strftime'):
+                    form[date_field] = form[date_field].strftime('%Y-%m-%d')
+                else:
+                    form[date_field] = str(form[date_field])
+            except:
+                form[date_field] = str(form[date_field]) if form[date_field] else None
+    
+    # Carimbo: converter de UTC (servidor) para horário de Brasília
+    if "carimbo" in form and form["carimbo"] is not None:
+        try:
+            if hasattr(form["carimbo"], 'strftime'):
+                dt_utc = form["carimbo"].replace(tzinfo=timezone.utc)
+                dt_brasilia = dt_utc.astimezone(brasilia_tz)
+                form["carimbo"] = dt_brasilia.strftime('%Y-%m-%dT%H:%M:%S')
+            else:
+                dt_str = str(form["carimbo"])
+                try:
+                    dt_utc = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+                    dt_brasilia = dt_utc.astimezone(brasilia_tz)
+                    form["carimbo"] = dt_brasilia.strftime('%Y-%m-%dT%H:%M:%S')
+                except:
+                    form["carimbo"] = dt_str
+        except:
+            form["carimbo"] = str(form["carimbo"]) if form["carimbo"] else None
+    
+    # Remover uuid se existir
+    form.pop('uuid', None)
+    # Remover rn (window function helper)
+    form.pop('rn', None)
+    
+    return form
+
+
+def _batch_load_obras_relacionadas(cursor, formularios):
+    """Carrega obras relacionadas em batch (1-2 queries ao invés de N)."""
+    # Coletar grupos únicos
+    grupos = set()
+    multiplos_sem_grupo = []
+    
+    for form in formularios:
+        g = form.get("grupo_lancamento")
+        if g:
+            if isinstance(g, (bytes, bytearray)):
+                g = g.decode('utf-8').strip()
+            grupos.add(g)
+        elif form.get("multiplos_lancamentos") == 1:
+            multiplos_sem_grupo.append(form)
+    
+    # Batch query para todos os grupos de uma vez
+    related_by_grupo = {}
+    if grupos:
+        placeholders = ",".join(["%s"] * len(grupos))
+        cursor.execute(f"""
+            SELECT id, obra, valor, referente, data_pagamento, forma_pagamento, grupo_lancamento
+            FROM formulario
+            WHERE grupo_lancamento IN ({placeholders})
+            ORDER BY id ASC
+        """, tuple(grupos))
+        all_related = cursor.fetchall()
+        
+        for r in all_related:
+            g = r.get("grupo_lancamento")
+            if isinstance(g, (bytes, bytearray)):
+                g = g.decode('utf-8').strip()
+            if g not in related_by_grupo:
+                related_by_grupo[g] = []
+            # Converter Decimal para float
+            if "valor" in r and r["valor"] is not None:
+                r["valor"] = float(r["valor"])
+            related_by_grupo[g].append(r)
+    
+    # Batch query para múltiplos antigos (sem grupo_lancamento)
+    related_by_multiplo = {}
+    for form in multiplos_sem_grupo:
+        key = f"{form.get('data_lancamento')}|{form.get('solicitante')}|{form.get('titular')}"
+        if key not in related_by_multiplo:
+            cursor.execute("""
+                SELECT id, obra, valor, referente, data_pagamento, forma_pagamento
+                FROM formulario
+                WHERE multiplos_lancamentos = 1 
+                AND DATE_FORMAT(data_lancamento, '%%Y%%m%%d') = DATE_FORMAT(%s, '%%Y%%m%%d')
+                AND solicitante = %s
+                AND titular = %s
+                ORDER BY id ASC
+            """, (form["data_lancamento"], form["solicitante"], form["titular"]))
+            rows = cursor.fetchall()
+            for r in rows:
+                if "valor" in r and r["valor"] is not None:
+                    r["valor"] = float(r["valor"])
+            related_by_multiplo[key] = rows
+    
+    # Atribuir obras relacionadas a cada formulário
+    for form in formularios:
+        obras_relacionadas = []
+        g = form.get("grupo_lancamento")
+        
+        if g:
+            if isinstance(g, (bytes, bytearray)):
+                g = g.decode('utf-8').strip()
+            all_in_group = related_by_grupo.get(g, [])
+            obras_relacionadas = [r for r in all_in_group if r["id"] != form["id"]]
+        elif form.get("multiplos_lancamentos") == 1:
+            key = f"{form.get('data_lancamento')}|{form.get('solicitante')}|{form.get('titular')}"
+            all_in_multiplo = related_by_multiplo.get(key, [])
+            obras_relacionadas = [r for r in all_in_multiplo if r["id"] != form["id"]]
+        
+        if obras_relacionadas:
+            # Limpar campo grupo_lancamento dos relacionados (não necessário no front)
+            for obra in obras_relacionadas:
+                obra.pop('grupo_lancamento', None)
+            
+            form["obras_relacionadas"] = obras_relacionadas
+            
+            # Calcular valor total
+            valor_total = float(form.get("valor") or 0)
+            for obra in obras_relacionadas:
+                valor_total += float(obra.get("valor") or 0)
+            form["valor_total"] = valor_total
+            form["valor_principal"] = float(form.get("valor") or 0)
+
+
+def _check_fornecedores_novos(cursor, formularios):
+    """Verifica se os titulares existem na tabela fornecedor (batch)."""
+    fornecedores_nomes = set()
+    try:
+        cursor.execute("SELECT LOWER(TRIM(titular)) AS nome FROM fornecedor")
+        rows = cursor.fetchall()
+        fornecedores_nomes = set(row["nome"] for row in rows if row.get("nome"))
+    except Exception as e_forn:
+        print(f"⚠️ Erro ao buscar fornecedores: {e_forn}", file=sys.stderr, flush=True)
+    
+    for form in formularios:
+        titular_raw = form.get("titular") or ""
+        titular = titular_raw.strip().lower()
+        if titular and titular in fornecedores_nomes:
+            form["fornecedor_novo"] = False
+        elif titular:
+            form["fornecedor_novo"] = True
+        else:
+            form["fornecedor_novo"] = False
+
+
+# ===========================
+# LISTAR FORMULÁRIOS (GET) — com filtros server-side e paginação
 # ===========================
 @formulario_bp.route("/formulario", methods=["GET", "OPTIONS"])
 @cross_origin()
@@ -66,184 +239,230 @@ def listar_formularios():
     if request.method == "OPTIONS":
         return jsonify({"status": "OK"}), 200
 
-    # Novo filtro: codigo de barra (chave_pix) status
+    # --- Parâmetros de paginação ---
+    page = request.args.get("page", type=int)  # Se ausente, retorna tudo (backward compat)
+    per_page = request.args.get("per_page", 100, type=int)
+    per_page = min(per_page, 500)  # Limite de segurança
+    
+    # --- Parâmetros de filtro ---
+    status = request.args.get("status", "")
+    forma_pagamento = request.args.get("forma_pagamento", "")
+    data_exata = request.args.get("data", "")
+    data_inicio = request.args.get("data_inicio", "")
+    data_fim = request.args.get("data_fim", "")
+    obra = request.args.get("obra", "")
+    titular = request.args.get("titular", "")
+    solicitante = request.args.get("solicitante", "")
+    referente = request.args.get("referente", "")
+    busca = request.args.get("busca", "")
+    multiplos = request.args.get("multiplos", "todos")
     codigo_barra_status = request.args.get("codigo_barra_status", "todos")
+    ids_filter = request.args.get("ids", "")  # IDs separados por vírgula (histórico)
+    ordenacao = request.args.get("ordenacao", "id_asc")
     
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # ✅ NOVO: Usar ROW_NUMBER para pegar apenas o PRIMEIRO lançamento de cada grupo
-    # Apenas agrupa registros que têm grupo_lancamento
-    # Registros SEM grupo_lancamento são retornados normalmente
-    cursor.execute("""
-        SELECT f.* FROM (
-            SELECT *,
-                   CASE 
-                       WHEN grupo_lancamento IS NOT NULL 
-                       THEN ROW_NUMBER() OVER (PARTITION BY grupo_lancamento ORDER BY id ASC)
-                       ELSE 1
-                   END as rn
-            FROM formulario
-        ) f
-        WHERE f.rn = 1
-        ORDER BY f.id DESC
-    """)
+    # --- Construir WHERE dinâmico ---
+    where_parts = ["sub.rn = 1"]
+    params = []
+    
+    # Filtro: Status (lancado)
+    if status:
+        status_map = {
+            "PENDENTE": ("sub.lancado = %s", "N"),
+            "LANCADO": ("sub.lancado IN ('Y', 'S', '1')", None),
+            "NAO_AUTORIZADO": ("sub.lancado = %s", "X"),
+            "APROVADO": ("sub.lancado = %s", "A"),
+        }
+        if status in status_map:
+            sql_part, param = status_map[status]
+            where_parts.append(sql_part)
+            if param is not None:
+                params.append(param)
+    
+    # Filtro: Forma de pagamento
+    if forma_pagamento:
+        where_parts.append("UPPER(TRIM(sub.forma_pagamento)) = UPPER(TRIM(%s))")
+        params.append(forma_pagamento)
+    
+    # Filtro: Data exata
+    if data_exata:
+        where_parts.append("sub.data_pagamento = %s")
+        params.append(data_exata)
+    
+    # Filtro: Data intervalo
+    if data_inicio:
+        where_parts.append("sub.data_pagamento >= %s")
+        params.append(data_inicio)
+    if data_fim:
+        where_parts.append("sub.data_pagamento <= %s")
+        params.append(data_fim)
+    
+    # Filtro: Obra
+    if obra:
+        where_parts.append("sub.obra = %s")
+        params.append(int(obra))
+    
+    # Filtro: Titular (match exato case-insensitive)
+    if titular:
+        where_parts.append("UPPER(TRIM(sub.titular)) = UPPER(TRIM(%s))")
+        params.append(titular)
+    
+    # Filtro: Solicitante (busca parcial)
+    if solicitante:
+        where_parts.append("UPPER(sub.solicitante) LIKE %s")
+        params.append(f"%{solicitante.upper()}%")
+    
+    # Filtro: Referente/Descrição (busca parcial)
+    if referente:
+        where_parts.append("UPPER(sub.referente) LIKE %s")
+        params.append(f"%{referente.upper()}%")
+    
+    # Filtro: Busca mista (valor, titular, referente)
+    if busca:
+        busca_like = f"%{busca.strip()}%"
+        # Tenta converter para centavos para busca numérica
+        busca_centavos = None
+        try:
+            busca_clean = busca.strip().replace(".", "").replace(",", ".").replace("R$", "").replace(" ", "")
+            busca_float = float(busca_clean)
+            busca_centavos = int(round(busca_float * 100))
+        except (ValueError, TypeError):
+            pass
+        
+        if busca_centavos is not None:
+            where_parts.append("""
+                (sub.titular LIKE %s OR sub.referente LIKE %s 
+                 OR sub.valor = %s OR CAST(sub.valor AS CHAR) LIKE %s)
+            """)
+            params.extend([busca_like, busca_like, busca_centavos, busca_like])
+        else:
+            where_parts.append("(sub.titular LIKE %s OR sub.referente LIKE %s)")
+            params.extend([busca_like, busca_like])
+    
+    # Filtro: Múltiplos lançamentos
+    if multiplos == "sim":
+        where_parts.append("sub.grupo_lancamento IS NOT NULL")
+    elif multiplos == "nao":
+        where_parts.append("sub.grupo_lancamento IS NULL")
+    
+    # Filtro: Código de barras (boleto)
+    if codigo_barra_status == "vazio":
+        where_parts.append("""
+            (LOWER(TRIM(sub.forma_pagamento)) = 'boleto' 
+             AND (sub.chave_pix IS NULL OR TRIM(sub.chave_pix) = ''))
+        """)
+    elif codigo_barra_status == "preenchido":
+        where_parts.append("""
+            (LOWER(TRIM(sub.forma_pagamento)) = 'boleto' 
+             AND sub.chave_pix IS NOT NULL AND TRIM(sub.chave_pix) != '')
+        """)
+    
+    # Filtro: IDs específicos (histórico de exportação)
+    if ids_filter:
+        try:
+            id_list = [int(x.strip()) for x in ids_filter.split(",") if x.strip()]
+            if id_list:
+                placeholders = ",".join(["%s"] * len(id_list))
+                where_parts.append(f"sub.id IN ({placeholders})")
+                params.extend(id_list)
+        except ValueError:
+            pass
+    
+    # --- Subquery base (mesma lógica de ROW_NUMBER) ---
+    base_subquery = """
+        SELECT *,
+               CASE 
+                   WHEN grupo_lancamento IS NOT NULL 
+                   THEN ROW_NUMBER() OVER (PARTITION BY grupo_lancamento ORDER BY id ASC)
+                   ELSE 1
+               END as rn
+        FROM formulario
+    """
+    
+    where_sql = " AND ".join(where_parts)
+    
+    # --- Ordenação ---
+    order_sql = ORDER_MAP.get(ordenacao, "id ASC")
+    
+    # --- Count total (para paginação) ---
+    total = 0
+    if page:
+        count_sql = f"SELECT COUNT(*) as total FROM ({base_subquery}) sub WHERE {where_sql}"
+        cursor.execute(count_sql, tuple(params))
+        total = cursor.fetchone()["total"]
+    
+    # --- Buscar dados ---
+    if page:
+        offset = (page - 1) * per_page
+        data_sql = f"SELECT sub.* FROM ({base_subquery}) sub WHERE {where_sql} ORDER BY {order_sql} LIMIT %s OFFSET %s"
+        cursor.execute(data_sql, tuple(params) + (per_page, offset))
+    else:
+        data_sql = f"SELECT sub.* FROM ({base_subquery}) sub WHERE {where_sql} ORDER BY {order_sql}"
+        cursor.execute(data_sql, tuple(params))
+    
     formularios = cursor.fetchall()
     
-    # ✅ NOVO: Carregar obras relacionadas e calcular valor total para cada lançamento
+    # --- Pós-processamento ---
     for form in formularios:
-        # Converter valores Decimal para float
-        if "valor" in form and form["valor"] is not None:
-            form["valor"] = float(form["valor"])
-        
-        # ✅ NOVO: Converter datas para string ISO (YYYY-MM-DD)
-        for date_field in ["data_pagamento", "data_lancamento", "data_competencia"]:
-            if date_field in form and form[date_field] is not None:
-                try:
-                    if hasattr(form[date_field], 'strftime'):
-                        form[date_field] = form[date_field].strftime('%Y-%m-%d')
-                    else:
-                        form[date_field] = str(form[date_field])
-                except:
-                    form[date_field] = str(form[date_field]) if form[date_field] else None
-        
-        # ✅ Carimbo: converter de UTC (servidor) para horário de Brasília (UTC-3)
-        if "carimbo" in form and form["carimbo"] is not None:
-            try:
-                if hasattr(form["carimbo"], 'strftime'):
-                    # O MySQL retorna datetime naive (sem timezone) em UTC
-                    # Converter para Brasília subtraindo 3 horas
-                    dt_utc = form["carimbo"].replace(tzinfo=timezone.utc)
-                    dt_brasilia = dt_utc.astimezone(BRASILIA_TZ)
-                    form["carimbo"] = dt_brasilia.strftime('%Y-%m-%dT%H:%M:%S')
-                else:
-                    # Se for string, tenta fazer o parse e converter
-                    dt_str = str(form["carimbo"])
-                    try:
-                        dt_utc = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-                        dt_brasilia = dt_utc.astimezone(BRASILIA_TZ)
-                        form["carimbo"] = dt_brasilia.strftime('%Y-%m-%dT%H:%M:%S')
-                    except:
-                        form["carimbo"] = dt_str
-            except:
-                form["carimbo"] = str(form["carimbo"]) if form["carimbo"] else None
-        
-        obras_relacionadas = []
-        
-        # Se tem grupo_lancamento, buscar relacionados pelo grupo
-        if form.get("grupo_lancamento"):
-            cursor.execute("""
-                SELECT id, obra, valor, referente, data_pagamento, forma_pagamento
-                FROM formulario
-                WHERE grupo_lancamento = %s AND id != %s
-                ORDER BY id ASC
-            """, (form["grupo_lancamento"], form["id"]))
-            obras_relacionadas = cursor.fetchall()
-            
-        # Se é múltiplo mas sem grupo_lancamento (antigo), buscar relacionados
-        elif form.get("multiplos_lancamentos") == 1:
-            cursor.execute("""
-                SELECT id, obra, valor, referente, data_pagamento, forma_pagamento
-                FROM formulario
-                WHERE multiplos_lancamentos = 1 
-                AND DATE_FORMAT(data_lancamento, '%Y%m%d') = DATE_FORMAT(%s, '%Y%m%d')
-                AND solicitante = %s
-                AND titular = %s
-                AND id != %s
-                ORDER BY id ASC
-            """, (form["data_lancamento"], form["solicitante"], form["titular"], form["id"]))
-            obras_relacionadas = cursor.fetchall()
-        
-        # Se tem obras relacionadas, armazenar e CALCULAR VALOR TOTAL
-        if obras_relacionadas:
-            # Converter Decimal para float para JSON serialization
-            obras_relacionadas_clean = []
-            for obra in obras_relacionadas:
-                obra_clean = dict(obra)
-                if "valor" in obra_clean:
-                    obra_clean["valor"] = float(obra_clean["valor"]) if obra_clean["valor"] else 0
-                obras_relacionadas_clean.append(obra_clean)
-            
-            form["obras_relacionadas"] = obras_relacionadas_clean
-            
-            # Calcular valor total (principal + todos os relacionados)
-            valor_total = float(form.get("valor") or 0)
-            for obra in obras_relacionadas_clean:
-                valor_total += float(obra.get("valor") or 0)
-            
-            # Armazenar o valor total (para exibição na tabela)
-            form["valor_total"] = valor_total
-            # Manter o valor original para compatibilidade
-            form["valor_principal"] = float(form.get("valor") or 0)
+        _postprocess_formulario(form, BRASILIA_TZ)
     
-    # ✅ NOVO: Após carregar, remover campo 'uuid' caso exista para não expor ao frontend
-    # Isto garante que mesmo se a coluna tiver sido adicionada ao BD, não será enviada ao front
-    for form in formularios:
-        if 'uuid' in form:
-            try:
-                del form['uuid']
-            except Exception:
-                pass
-
-    # ✅ Verificar se cada lançamento tem fornecedor cadastrado
-    # Busca TODOS os titulares cadastrados na tabela fornecedor (por nome)
-    fornecedores_nomes = set()
-    try:
-        cursor.execute("SELECT LOWER(TRIM(titular)) AS nome FROM fornecedor")
-        rows = cursor.fetchall()
-        fornecedores_nomes = set(row["nome"] for row in rows if row.get("nome"))
-        print(f"📋 Fornecedores cadastrados ({len(fornecedores_nomes)}): {list(fornecedores_nomes)[:10]}...", file=sys.stderr, flush=True)
-    except Exception as e_forn:
-        print(f"⚠️ Erro ao buscar fornecedores: {e_forn}", file=sys.stderr, flush=True)
-        fornecedores_nomes = set()
+    # --- Carregar obras relacionadas em batch (fix N+1) ---
+    _batch_load_obras_relacionadas(cursor, formularios)
     
-    print(f"\n{'='*70}", file=sys.stderr, flush=True)
-    print(f"🔍 DEBUG FORNECEDOR_NOVO - Verificando {len(formularios)} formulários", file=sys.stderr, flush=True)
-    print(f"📋 Total fornecedores na tabela: {len(fornecedores_nomes)}", file=sys.stderr, flush=True)
-    print(f"📋 Nomes cadastrados: {list(fornecedores_nomes)[:20]}", file=sys.stderr, flush=True)
-    print(f"{'='*70}", file=sys.stderr, flush=True)
+    # --- Verificar fornecedores novos ---
+    _check_fornecedores_novos(cursor, formularios)
     
-    for form in formularios:
-        titular_raw = form.get("titular") or ""
-        titular = titular_raw.strip().lower()
-        
-        # Verificação simples: o titular existe na tabela de fornecedores?
-        if titular and titular in fornecedores_nomes:
-            form["fornecedor_novo"] = False
-            print(f"  ✅ ID={form.get('id')} | titular='{titular_raw}' → ENCONTRADO na tabela fornecedor | fornecedor_novo=False", file=sys.stderr, flush=True)
-        elif titular:
-            form["fornecedor_novo"] = True
-            print(f"  🔴 ID={form.get('id')} | titular='{titular_raw}' → NÃO ENCONTRADO | fornecedor_novo=True", file=sys.stderr, flush=True)
-        else:
-            form["fornecedor_novo"] = False
-            print(f"  ⚪ ID={form.get('id')} | titular VAZIO | fornecedor_novo=False", file=sys.stderr, flush=True)
-
-    print(f"{'='*70}\n", file=sys.stderr, flush=True)
-    
-    # ✅ MARCA DE VERSÃO: Se este campo aparecer no JSON, o código novo está rodando
-    total_novos = sum(1 for f in formularios if f.get("fornecedor_novo") == True)
-    print(f"📊 RESUMO: {total_novos} fornecedores marcados como NOVO de {len(formularios)} total", file=sys.stderr, flush=True)
-    
-    # === APLICAR FILTRO DE CODIGO DE BARRA (após carregar todos os dados) ===
-    if codigo_barra_status in ("vazio", "preenchido"):
-        def is_boleto_sem_codigo(form):
-            return (
-                str(form.get("forma_pagamento", "")).strip().lower() == "boleto"
-                and not (form.get("chave_pix") or "").strip()
-            )
-        def is_boleto_com_codigo(form):
-            return (
-                str(form.get("forma_pagamento", "")).strip().lower() == "boleto"
-                and bool((form.get("chave_pix") or "").strip())
-            )
-        if codigo_barra_status == "vazio":
-            formularios = [f for f in formularios if is_boleto_sem_codigo(f)]
-        elif codigo_barra_status == "preenchido":
-            formularios = [f for f in formularios if is_boleto_com_codigo(f)]
-
     cursor.close()
     conn.close()
-    return jsonify(formularios), 200
+    
+    # --- Resposta ---
+    if page:
+        return jsonify({
+            "data": formularios,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+        }), 200
+    else:
+        # Backward compatible: retorna array puro
+        return jsonify(formularios), 200
+
+
+# ===========================
+# BUSCAR FORMULÁRIO POR ID (GET) — para refresh após edição
+# ===========================
+@formulario_bp.route("/formulario/<int:form_id>", methods=["GET", "OPTIONS"])
+@cross_origin()
+def buscar_formulario(form_id):
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    cursor.execute("SELECT * FROM formulario WHERE id = %s", (form_id,))
+    form = cursor.fetchone()
+    
+    if not form:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Formulário não encontrado"}), 404
+    
+    # Pós-processamento
+    _postprocess_formulario(form, BRASILIA_TZ)
+    
+    # Carregar obras relacionadas
+    _batch_load_obras_relacionadas(cursor, [form])
+    
+    # Verificar fornecedor novo
+    _check_fornecedores_novos(cursor, [form])
+    
+    cursor.close()
+    conn.close()
+    
+    return jsonify(form), 200
 
 # ===========================
 # CRIAR FORMULÁRIO (POST)
