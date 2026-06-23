@@ -258,7 +258,7 @@ def listar_formularios():
     multiplos = request.args.get("multiplos", "todos")
     codigo_barra_status = request.args.get("codigo_barra_status", "todos")
     ids_filter = request.args.get("ids", "")  # IDs separados por vírgula (histórico)
-    ordenacao = request.args.get("ordenacao", "id_asc")
+    ordenacao = request.args.get("ordenacao", "id_desc")
     
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
@@ -384,7 +384,7 @@ def listar_formularios():
     where_sql = " AND ".join(where_parts)
     
     # --- Ordenação ---
-    order_sql = ORDER_MAP.get(ordenacao, "id ASC")
+    order_sql = ORDER_MAP.get(ordenacao, "id DESC")
     
     # --- Count total (para paginação) ---
     total = 0
