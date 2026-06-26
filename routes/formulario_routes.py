@@ -274,6 +274,7 @@ def listar_formularios():
             "LANCADO": ("sub.lancado IN ('Y', 'S', '1')", None),
             "NAO_AUTORIZADO": ("sub.lancado = %s", "X"),
             "APROVADO": ("sub.lancado = %s", "A"),
+            "PAGO": ("sub.lancado = %s", "P"),
         }
         if status in status_map:
             sql_part, param = status_map[status]
