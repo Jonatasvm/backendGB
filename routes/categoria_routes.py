@@ -3,6 +3,7 @@ from flask_cors import cross_origin
 from services.categoria_service import (
     criar_categoria,
     listar_categorias,
+    listar_categorias_pai,
     atualizar_categoria,
     deletar_categoria,
     buscar_categoria_por_id
@@ -24,6 +25,22 @@ def listar():
         return jsonify(categorias), 200
     except Exception as e:
         return jsonify({"error": f"Erro ao listar categorias: {str(e)}"}), 500
+
+
+# =====================================================
+# LISTAR APENAS CATEGORIAS PAI (GET)
+# =====================================================
+@categoria_bp.route("/categoria/pais", methods=["GET", "OPTIONS"])
+@cross_origin()
+def listar_pais():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    try:
+        categorias = listar_categorias_pai()
+        return jsonify(categorias), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao listar categorias pai: {str(e)}"}), 500
 
 
 # =====================================================
@@ -56,12 +73,19 @@ def criar():
     data = request.get_json()
     nome = data.get("nome", "").strip()
     descricao = (data.get("descricao") or "").strip()
+    conta_filha = data.get("conta_filha")
+    id_pai = data.get("id_pai")
 
     if not nome:
         return jsonify({"error": "Nome da categoria é obrigatório"}), 400
 
     try:
-        categoria_id, erro = criar_categoria(nome, descricao if descricao else None)
+        categoria_id, erro = criar_categoria(
+            nome, 
+            descricao if descricao else None,
+            conta_filha,
+            id_pai
+        )
         
         if erro:
             return jsonify({"error": erro}), 400
@@ -85,10 +109,14 @@ def atualizar(categoria_id):
 
     data = request.get_json()
     nome = (data.get("nome") or "").strip() if data.get("nome") else None
-    descricao = (data.get("descricao") or "").strip() if data.get("descricao") else None
+    descricao = (data.get("descricao") or "").strip() if data.get("descricao") is not None else None
+    conta_filha = data.get("conta_filha")
+    id_pai = data.get("id_pai")
 
     try:
-        categoria_id_result, erro = atualizar_categoria(categoria_id, nome, descricao)
+        categoria_id_result, erro = atualizar_categoria(
+            categoria_id, nome, descricao, conta_filha, id_pai
+        )
         
         if erro:
             return jsonify({"error": erro}), 400

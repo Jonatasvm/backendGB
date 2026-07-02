@@ -67,19 +67,24 @@ def listar_usuarios():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Query que traz Usuários + Nome da Obra (LEFT JOIN)
+    # Query que traz Usuários + Nome da Obra + Gestor (LEFT JOIN)
     cursor.execute("""
         SELECT 
             u.id AS user_id,
             u.username,
             u.nome,
+            u.uuid_id,
             u.password_hash,
             u.role,
             o.id AS obra_id,
-            o.nome AS obra_nome
+            o.nome AS obra_nome,
+            ug.uuid_fincontrol AS gestor_uuid,
+            uf.display_name AS gestor_nome
         FROM users u
         LEFT JOIN users_obras uo ON u.id = uo.user_id
         LEFT JOIN obras o ON uo.obra_id = o.id
+        LEFT JOIN user_gestor ug ON u.uuid_id = ug.uuid_users AND ug.ativo = 1
+        LEFT JOIN users_fincontrol uf ON ug.uuid_fincontrol = uf.id
         ORDER BY u.id
     """)
 
@@ -97,14 +102,18 @@ def listar_usuarios():
                 "id": uid,
                 "username": row["username"],
                 "nome": row.get("nome", ""),
+                "uuid_id": row.get("uuid_id", ""),
                 "password_hash": row["password_hash"],
                 "role": row["role"],
+                "gestor_uuid": row.get("gestor_uuid"),
+                "gestor_nome": row.get("gestor_nome"),
                 "obras": [] # Lista vazia inicial
             }
         
         # Se tiver obra nessa linha, adiciona na lista
         if row["obra_nome"]:
-            usuarios_dict[uid]["obras"].append(row["obra_nome"])
+            if row["obra_nome"] not in usuarios_dict[uid]["obras"]:
+                usuarios_dict[uid]["obras"].append(row["obra_nome"])
 
     # Converte o dicionário em lista para o JSON final
     lista_final = list(usuarios_dict.values())

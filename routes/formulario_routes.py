@@ -507,31 +507,42 @@ def criar_formulario():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # === NOVO: Determinar UUID do solicitante para gravar na tabela formulario ===
+    # === NOVO: Determinar UUID e ID do solicitante para gravar na tabela formulario ===
     solicitante_uuid = None
+    solicitante_id = None
     try:
         # Preferência: se frontend enviou o uuid explícito
         if data.get('uuid'):
             solicitante_uuid = data.get('uuid')
-        else:
-            # Tenta buscar na tabela users pelo id (se numeric) ou pelo username
+            # Buscar o id numérico pelo uuid
+            cursor.execute("SELECT id FROM users WHERE uuid_id = %s LIMIT 1", (solicitante_uuid,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                solicitante_id = row[0]
+        
+        # Se ainda não temos o id, tentar por solicitante (nome/username)
+        if solicitante_id is None:
             sol = data.get('solicitante')
             if sol is not None:
                 try:
                     sol_int = int(sol)
                     # Buscar por id
-                    cursor.execute("SELECT uuid_id FROM users WHERE id = %s", (sol_int,))
+                    cursor.execute("SELECT id, uuid_id FROM users WHERE id = %s", (sol_int,))
                     row = cursor.fetchone()
-                    if row and row[0]:
-                        solicitante_uuid = row[0]
-                except Exception:
+                    if row:
+                        solicitante_id = row[0]
+                        if not solicitante_uuid and row[1]:
+                            solicitante_uuid = row[1]
+                except (ValueError, TypeError):
                     # Buscar por username (pode estar em maiúsculas ou minúsculas)
-                    cursor.execute("SELECT uuid_id FROM users WHERE UPPER(username) = UPPER(%s) LIMIT 1", (sol,))
+                    cursor.execute("SELECT id, uuid_id FROM users WHERE UPPER(username) = UPPER(%s) LIMIT 1", (sol,))
                     row = cursor.fetchone()
-                    if row and row[0]:
-                        solicitante_uuid = row[0]
+                    if row:
+                        solicitante_id = row[0]
+                        if not solicitante_uuid and row[1]:
+                            solicitante_uuid = row[1]
     except Exception as e:
-        print(f"⚠️ Aviso: não foi possível determinar uuid do solicitante: {e}", file=sys.stderr, flush=True)
+        print(f"⚠️ Aviso: não foi possível determinar uuid/id do solicitante: {e}", file=sys.stderr, flush=True)
 
     # ✅ Gerar grupo de lançamento único para múltiplas obras
     grupo_lancamento = None
@@ -575,8 +586,8 @@ def criar_formulario():
                             INSERT INTO formulario (
                                 data_lancamento, solicitante, titular, referente, valor, obra, 
                                 data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                                data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento, fornecedor_novo, uuid
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s)
+                                data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento, fornecedor_novo, uuid, id_solicitante
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s)
                         """, (
                             data["data_lancamento"], 
                             data["solicitante"], 
@@ -596,7 +607,8 @@ def criar_formulario():
                             data.get("multiplos_lancamentos", 0),
                             grupo_lancamento,  # Mesmo grupo para todas
                             data.get("fornecedor_novo", 0),
-                            solicitante_uuid
+                            solicitante_uuid,
+                            solicitante_id
                         ))
                         conn.commit()
                         formulario_id = cursor.lastrowid
@@ -610,8 +622,8 @@ def criar_formulario():
                                 INSERT INTO formulario (
                                     data_lancamento, solicitante, titular, referente, valor, obra, 
                                     data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, fornecedor_novo, uuid
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s)
+                                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, fornecedor_novo, uuid, id_solicitante
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s)
                             """, (
                                 data["data_lancamento"], 
                                 data["solicitante"], 
@@ -630,7 +642,8 @@ def criar_formulario():
                                 data.get("categoria"),
                                 data.get("multiplos_lancamentos", 0),
                                 data.get("fornecedor_novo", 0),
-                                solicitante_uuid
+                                solicitante_uuid,
+                                solicitante_id
                             ))
                             conn.commit()
                             formulario_id = cursor.lastrowid
@@ -652,8 +665,8 @@ def criar_formulario():
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
                     data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento, fornecedor_novo, uuid
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s)
+                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, grupo_lancamento, fornecedor_novo, uuid, id_solicitante
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data["data_lancamento"], 
                 data["solicitante"], 
@@ -673,7 +686,8 @@ def criar_formulario():
                 data.get("multiplos_lancamentos", 0),
                 grupo_lancamento,
                 data.get("fornecedor_novo", 0),
-                solicitante_uuid
+                solicitante_uuid,
+                solicitante_id
             ))
             conn.commit()
             formulario_id = cursor.lastrowid
@@ -686,8 +700,8 @@ def criar_formulario():
                 INSERT INTO formulario (
                     data_lancamento, solicitante, titular, referente, valor, obra, 
                     data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, fornecedor_novo, uuid
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s)
+                    data_competencia, carimbo, observacao, conta, categoria, multiplos_lancamentos, fornecedor_novo, uuid, id_solicitante
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s)
             """, (
                 data["data_lancamento"], 
                 data["solicitante"], 
@@ -706,7 +720,8 @@ def criar_formulario():
                 data.get("categoria"),
                 data.get("multiplos_lancamentos", 0),
                 data.get("fornecedor_novo", 0),
-                solicitante_uuid
+                solicitante_uuid,
+                solicitante_id
             ))
             conn.commit()
             formulario_id = cursor.lastrowid
