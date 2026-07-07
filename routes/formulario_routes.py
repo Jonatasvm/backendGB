@@ -133,6 +133,8 @@ def _batch_load_obras_relacionadas(cursor, formularios):
         if gid:
             grupo_ids.add(gid)
     
+    print(f"[BATCH_LOAD] grupo_ids encontrados: {grupo_ids}", file=sys.stderr, flush=True)
+    
     # Batch query para todos os grupos de uma vez
     related_by_grupo = {}
     if grupo_ids:
@@ -144,6 +146,8 @@ def _batch_load_obras_relacionadas(cursor, formularios):
             ORDER BY id ASC
         """, tuple(grupo_ids))
         all_related = cursor.fetchall()
+        
+        print(f"[BATCH_LOAD] Total de registros relacionados encontrados: {len(all_related)}", file=sys.stderr, flush=True)
         
         for r in all_related:
             gid = r.get("grupo_id")
@@ -162,6 +166,7 @@ def _batch_load_obras_relacionadas(cursor, formularios):
         if gid:
             all_in_group = related_by_grupo.get(gid, [])
             obras_relacionadas = [r for r in all_in_group if r["id"] != form["id"]]
+            print(f"[BATCH_LOAD] Form ID={form.get('id')}, grupo_id={gid}, irmãos={len(obras_relacionadas)}", file=sys.stderr, flush=True)
         
         if obras_relacionadas:
             # Limpar campo grupo_id dos relacionados (não necessário no front)
@@ -176,6 +181,7 @@ def _batch_load_obras_relacionadas(cursor, formularios):
                 valor_total += float(obra.get("valor") or 0)
             form["valor_total"] = valor_total
             form["valor_principal"] = float(form.get("valor") or 0)
+            print(f"[BATCH_LOAD] → valor_total={valor_total}", file=sys.stderr, flush=True)
 
 
 def _check_fornecedores_novos(cursor, formularios):
@@ -372,10 +378,14 @@ def listar_formularios():
         _postprocess_formulario(form, BRASILIA_TZ)
     
     # --- Carregar obras relacionadas em batch ---
-    _batch_load_obras_relacionadas(cursor, formularios)
+    cursor2 = conn.cursor(dictionary=True)
+    _batch_load_obras_relacionadas(cursor2, formularios)
+    cursor2.close()
     
     # --- Verificar fornecedores novos ---
-    _check_fornecedores_novos(cursor, formularios)
+    cursor3 = conn.cursor(dictionary=True)
+    _check_fornecedores_novos(cursor3, formularios)
+    cursor3.close()
     
     cursor.close()
     conn.close()
