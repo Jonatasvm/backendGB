@@ -116,6 +116,11 @@ def _postprocess_formulario(form, brasilia_tz):
     # Remover uuid se existir
     form.pop('uuid', None)
     
+    # Compatibilidade frontend: mapear grupo_id → grupo_lancamento
+    # O frontend usa grupo_lancamento para identificar múltiplos lançamentos
+    if form.get("grupo_id") and not form.get("grupo_lancamento"):
+        form["grupo_lancamento"] = str(form["grupo_id"])
+    
     return form
 
 
