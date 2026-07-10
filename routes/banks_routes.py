@@ -3,6 +3,7 @@ from flask_cors import cross_origin
 from services.bank_service import (
     criar_banco,
     listar_bancos,
+    listar_bancos_pai,
     atualizar_banco,
     deletar_banco,
     buscar_banco_por_id
@@ -25,6 +26,21 @@ def listar():
     except Exception as e:
         return jsonify({"error": f"Erro ao listar bancos: {str(e)}"}), 500
 
+# =====================================================
+# LISTAR APENAS BANCOS PAI (GET)
+# =====================================================
+@bancos_bp.route("/bancos/pais", methods=["GET", "OPTIONS"])
+@cross_origin()
+def listar_pais():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "OK"}), 200
+
+    try:
+        bancos = listar_bancos_pai()
+        return jsonify(bancos), 200
+    except Exception as e:
+        return jsonify({"error": f"Erro ao listar bancos pai: {str(e)}"}), 500
+
 
 # =====================================================
 # CRIAR (POST)
@@ -37,12 +53,18 @@ def criar():
 
     data = request.get_json()
     nome = data.get("nome", "").strip()
+    conta_filha = data.get("conta_filha")
+    id_pai = data.get("id_pai")
 
     if not nome:
         return jsonify({"error": "Nome do banco é obrigatório"}), 400
 
     try:
-        novo_banco = criar_banco(nome)
+        novo_banco, erro = criar_banco(nome, conta_filha, id_pai)
+        
+        if erro:
+            return jsonify({"error": erro}), 400
+            
         return jsonify(novo_banco), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -76,13 +98,19 @@ def atualizar(banco_id):
         return jsonify({"status": "OK"}), 200
 
     data = request.get_json()
-    nome = data.get("nome", "").strip()
+    nome = (data.get("nome") or "").strip() if data.get("nome") else None
+    conta_filha = data.get("conta_filha")
+    id_pai = data.get("id_pai")
 
     if not nome:
         return jsonify({"error": "Nome do banco é obrigatório"}), 400
 
     try:
-        banco = atualizar_banco(banco_id, nome)
+        banco, erro = atualizar_banco(banco_id, nome, conta_filha, id_pai)
+        
+        if erro:
+            return jsonify({"error": erro}), 400
+            
         return jsonify(banco), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -98,7 +126,11 @@ def deletar(banco_id):
         return jsonify({"status": "OK"}), 200
 
     try:
-        deletar_banco(banco_id)
+        sucesso, erro = deletar_banco(banco_id)
+        
+        if erro:
+            return jsonify({"error": erro}), 400
+            
         return jsonify({"message": "Banco deletado com sucesso"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
