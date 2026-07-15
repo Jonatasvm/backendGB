@@ -116,63 +116,105 @@ def _postprocess_formulario(form, brasilia_tz):
     # Remover uuid se existir
     form.pop('uuid', None)
     
-    # Compatibilidade frontend: mapear grupo_id → grupo_lancamento
-    # O frontend usa grupo_lancamento para identificar múltiplos lançamentos
-    if form.get("grupo_id") and not form.get("grupo_lancamento"):
-        form["grupo_lancamento"] = str(form["grupo_id"])
-    
     return form
 
 
 def _batch_load_obras_relacionadas(cursor, formularios):
-    """Carrega obras relacionadas em batch usando grupo_id INT."""
-    # Coletar grupo_ids únicos (ignora NULL = lançamentos simples)
+    """Carrega obras relacionadas em batch usando formulario_obras (novo formato)
+       + fallback para grupo_id (formato antigo/legado)."""
+    
+    form_ids = [f["id"] for f in formularios if f.get("id")]
+    
+    if not form_ids:
+        return
+    
+    # =========================================================
+    # 1) NOVO FORMATO: buscar de formulario_obras
+    # =========================================================
+    obras_by_form = {}
+    placeholders = ",".join(["%s"] * len(form_ids))
+    try:
+        cursor.execute(f"""
+            SELECT fo.formulario_id, fo.obra_id AS obra, fo.valor, fo.id AS fo_id
+            FROM formulario_obras fo
+            WHERE fo.formulario_id IN ({placeholders})
+            ORDER BY fo.id ASC
+        """, tuple(form_ids))
+        rows = cursor.fetchall()
+        
+        for r in rows:
+            fid = r["formulario_id"]
+            if fid not in obras_by_form:
+                obras_by_form[fid] = []
+            if "valor" in r and r["valor"] is not None:
+                r["valor"] = float(r["valor"])
+            obras_by_form[fid].append({
+                "id": r.get("fo_id"),
+                "obra": r.get("obra"),
+                "valor": r.get("valor", 0),
+            })
+        
+        print(f"[BATCH_LOAD] formulario_obras: {len(rows)} registros para {len(obras_by_form)} formulários", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[BATCH_LOAD] ⚠️ Erro ao buscar formulario_obras: {e}", file=sys.stderr, flush=True)
+    
+    # =========================================================
+    # 2) FALLBACK LEGADO: buscar irmãos pelo grupo_id (antigo)
+    # =========================================================
     grupo_ids = set()
+    forms_sem_obras = []
     for form in formularios:
-        gid = form.get("grupo_id")
-        if gid:
-            grupo_ids.add(gid)
+        fid = form.get("id")
+        if fid not in obras_by_form:
+            gid = form.get("grupo_id")
+            if gid:
+                grupo_ids.add(gid)
+                forms_sem_obras.append(form)
     
-    print(f"[BATCH_LOAD] grupo_ids encontrados: {grupo_ids}", file=sys.stderr, flush=True)
-    
-    # Batch query para todos os grupos de uma vez
     related_by_grupo = {}
     if grupo_ids:
-        placeholders = ",".join(["%s"] * len(grupo_ids))
+        ph = ",".join(["%s"] * len(grupo_ids))
         cursor.execute(f"""
             SELECT id, obra, valor, referente, data_pagamento, forma_pagamento, grupo_id
             FROM formulario
-            WHERE grupo_id IN ({placeholders})
+            WHERE grupo_id IN ({ph})
             ORDER BY id ASC
         """, tuple(grupo_ids))
         all_related = cursor.fetchall()
-        
-        print(f"[BATCH_LOAD] Total de registros relacionados encontrados: {len(all_related)}", file=sys.stderr, flush=True)
         
         for r in all_related:
             gid = r.get("grupo_id")
             if gid not in related_by_grupo:
                 related_by_grupo[gid] = []
-            # Converter Decimal para float
             if "valor" in r and r["valor"] is not None:
                 r["valor"] = float(r["valor"])
             related_by_grupo[gid].append(r)
-    
-    # Atribuir obras relacionadas a cada formulário
-    for form in formularios:
-        obras_relacionadas = []
-        gid = form.get("grupo_id")
         
-        if gid:
-            all_in_group = related_by_grupo.get(gid, [])
-            obras_relacionadas = [r for r in all_in_group if r["id"] != form["id"]]
-            print(f"[BATCH_LOAD] Form ID={form.get('id')}, grupo_id={gid}, irmãos={len(obras_relacionadas)}", file=sys.stderr, flush=True)
+        print(f"[BATCH_LOAD] LEGADO grupo_id: {len(all_related)} registros para {len(grupo_ids)} grupos", file=sys.stderr, flush=True)
+    
+    # =========================================================
+    # 3) Atribuir obras_relacionadas a cada formulário
+    # =========================================================
+    for form in formularios:
+        fid = form.get("id")
+        obras_relacionadas = []
+        
+        # Prioridade 1: formulario_obras (novo formato)
+        if fid in obras_by_form:
+            obras_relacionadas = obras_by_form[fid]
+            form["grupo_lancamento"] = str(fid)  # Frontend usa isso para detectar múltiplo
+        else:
+            # Prioridade 2: grupo_id legado
+            gid = form.get("grupo_id")
+            if gid:
+                all_in_group = related_by_grupo.get(gid, [])
+                obras_relacionadas = [r for r in all_in_group if r["id"] != fid]
+                for obra in obras_relacionadas:
+                    obra.pop('grupo_id', None)
+                if obras_relacionadas:
+                    form["grupo_lancamento"] = str(gid)  # Compatibilidade frontend
         
         if obras_relacionadas:
-            # Limpar campo grupo_id dos relacionados (não necessário no front)
-            for obra in obras_relacionadas:
-                obra.pop('grupo_id', None)
-            
             form["obras_relacionadas"] = obras_relacionadas
             
             # Calcular valor total
@@ -181,7 +223,6 @@ def _batch_load_obras_relacionadas(cursor, formularios):
                 valor_total += float(obra.get("valor") or 0)
             form["valor_total"] = valor_total
             form["valor_principal"] = float(form.get("valor") or 0)
-            print(f"[BATCH_LOAD] → valor_total={valor_total}", file=sys.stderr, flush=True)
 
 
 def _check_fornecedores_novos(cursor, formularios):
@@ -239,11 +280,7 @@ def listar_formularios():
     cursor = conn.cursor(dictionary=True)
     
     # --- Construir WHERE dinâmico ---
-    # Mostrar apenas 1 registro por grupo: simples (grupo_id IS NULL) ou primeiro do grupo
-    where_parts = ["""
-        (f.grupo_id IS NULL 
-         OR f.id = (SELECT MIN(f2.id) FROM formulario f2 WHERE f2.grupo_id = f.grupo_id))
-    """]
+    where_parts = ["1=1"]
     params = []
     
     # Filtro: Status (lancado)
@@ -321,11 +358,17 @@ def listar_formularios():
             where_parts.append("(f.titular LIKE %s OR f.referente LIKE %s)")
             params.extend([busca_like, busca_like])
     
-    # Filtro: Múltiplos lançamentos
+    # Filtro: Múltiplos lançamentos (novo: formulario_obras, legado: grupo_id)
     if multiplos == "sim":
-        where_parts.append("f.grupo_id IS NOT NULL")
+        where_parts.append("""
+            (f.id IN (SELECT DISTINCT formulario_id FROM formulario_obras)
+             OR f.grupo_id IS NOT NULL)
+        """)
     elif multiplos == "nao":
-        where_parts.append("f.grupo_id IS NULL")
+        where_parts.append("""
+            (f.id NOT IN (SELECT DISTINCT formulario_id FROM formulario_obras)
+             AND f.grupo_id IS NULL)
+        """)
     
     # Filtro: Código de barras (boleto)
     if codigo_barra_status == "vazio":
@@ -520,25 +563,77 @@ def criar_formulario():
     is_multiplo = data.get("multiplos_lancamentos") and data.get("obras_adicionais") and len(data.get("obras_adicionais", [])) > 0
     
     try:
+        # =====================================================
+        # PASSO 1: Preparar dados — sempre cria 1 registro em formulario
+        # =====================================================
+        obras_adicionais = []
+        
         if is_multiplo:
-            # =====================================================
-            # MÚLTIPLO LANÇAMENTO — Transação atômica com grupo_id INT
-            # =====================================================
             obras_adicionais = data.get("obras_adicionais", [])
-            
             if isinstance(obras_adicionais, str):
                 print(f"⚠️ AVISO: obras_adicionais veio como STRING: {obras_adicionais}", file=sys.stderr, flush=True)
                 obras_adicionais = []
             
-            # 1. Criar registro na tabela de sequência para gerar grupo_id
-            cursor.execute("INSERT INTO grupo_lancamento_seq (created_at) VALUES (NOW())")
-            grupo_id = cursor.lastrowid
-            
-            print(f"\n✅ MÚLTIPLO LANÇAMENTO — grupo_id={grupo_id}, {len(obras_adicionais)} obras", file=sys.stderr, flush=True)
-            
-            # 2. Inserir um registro para CADA obra
-            formulario_id = None
-            for idx, obra_info in enumerate(obras_adicionais, 1):
+            # A obra principal é o primeiro item de obras_adicionais
+            # (frontend envia obra principal + adicionais no array)
+            if obras_adicionais:
+                obra_principal = obras_adicionais[0]
+                obra_id_principal = obra_principal.get("obra_id", data.get("obra"))
+                valor_principal = obra_principal.get("valor", 0)
+                
+                if isinstance(valor_principal, str):
+                    valor_limpo = valor_principal.replace("R$", "").replace(".", "").replace(",", ".").strip()
+                    valor_principal = float(valor_limpo) if valor_limpo else 0
+                else:
+                    valor_principal = float(valor_principal) if valor_principal else 0
+                
+                valor_centavos = int(round(valor_principal))
+            else:
+                obra_id_principal = data.get("obra")
+                valor_centavos = int(round(float(data.get("valor", 0))))
+        else:
+            obra_id_principal = data.get("obra")
+            valor_centavos = int(round(float(data.get("valor", 0))))
+        
+        # =====================================================
+        # PASSO 2: INSERT na tabela formulario (1 registro apenas)
+        # =====================================================
+        cursor.execute("""
+            INSERT INTO formulario (
+                data_lancamento, solicitante, titular, referente, valor, obra, 
+                data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
+                data_competencia, carimbo, observacao, conta, categoria, 
+                fornecedor_novo, uuid, id_solicitante
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s)
+        """, (
+            data["data_lancamento"], 
+            data["solicitante"], 
+            data["titular"], 
+            data["referente"],
+            valor_centavos,
+            obra_id_principal,
+            data["data_pagamento"], 
+            data["forma_pagamento"],
+            valor_lancado,
+            data["cpf_cnpj"], 
+            data["chave_pix"], 
+            data["data_competencia"],
+            data["observacao"],
+            data.get("conta"),
+            data.get("categoria"),
+            data.get("fornecedor_novo", 0),
+            solicitante_uuid,
+            solicitante_id
+        ))
+        formulario_id = cursor.lastrowid
+        print(f"✅ Formulário criado — ID {formulario_id}, obra={obra_id_principal}, valor={valor_centavos}", file=sys.stderr, flush=True)
+        
+        # =====================================================
+        # PASSO 3: Se múltiplo, INSERT obras adicionais em formulario_obras
+        # =====================================================
+        if is_multiplo and len(obras_adicionais) > 1:
+            # Pular o primeiro (obra principal, já está no formulario)
+            for idx, obra_info in enumerate(obras_adicionais[1:], 2):
                 obra_id = obra_info.get("obra_id")
                 valor = obra_info.get("valor", 0)
                 
@@ -548,80 +643,20 @@ def criar_formulario():
                 else:
                     valor = float(valor) if valor else 0
                 
-                valor_centavos = int(round(valor))
+                valor_obra_centavos = int(round(valor))
                 
-                if valor_centavos > 0:
+                if valor_obra_centavos > 0 and obra_id:
                     cursor.execute("""
-                        INSERT INTO formulario (
-                            data_lancamento, solicitante, titular, referente, valor, obra, 
-                            data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                            data_competencia, carimbo, observacao, conta, categoria, 
-                            grupo_id, fornecedor_novo, uuid, id_solicitante
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        data["data_lancamento"], 
-                        data["solicitante"], 
-                        data["titular"], 
-                        data["referente"],
-                        valor_centavos,
-                        obra_id,
-                        data["data_pagamento"], 
-                        data["forma_pagamento"],
-                        valor_lancado,
-                        data["cpf_cnpj"], 
-                        data["chave_pix"], 
-                        data["data_competencia"],
-                        data["observacao"],
-                        data.get("conta"),
-                        data.get("categoria"),
-                        grupo_id,
-                        data.get("fornecedor_novo", 0),
-                        solicitante_uuid,
-                        solicitante_id
-                    ))
-                    if formulario_id is None:
-                        formulario_id = cursor.lastrowid
-                    print(f"   [{idx}] Obra {obra_id}: {valor_centavos} centavos → ID {cursor.lastrowid}", file=sys.stderr, flush=True)
+                        INSERT INTO formulario_obras (formulario_id, obra_id, valor)
+                        VALUES (%s, %s, %s)
+                    """, (formulario_id, obra_id, valor_obra_centavos))
+                    print(f"   [{idx}] formulario_obras: obra={obra_id}, valor={valor_obra_centavos} centavos", file=sys.stderr, flush=True)
             
-            # 3. COMMIT atômico — tudo ou nada
-            conn.commit()
-            print(f"✅ MÚLTIPLO LANÇAMENTO COMPLETO — grupo_id={grupo_id}", file=sys.stderr, flush=True)
-        else:
-            # =====================================================
-            # LANÇAMENTO SIMPLES — grupo_id = NULL
-            # =====================================================
-            valor_centavos = int(round(float(data.get("valor", 0))))
-            cursor.execute("""
-                INSERT INTO formulario (
-                    data_lancamento, solicitante, titular, referente, valor, obra, 
-                    data_pagamento, forma_pagamento, lancado, cpf_cnpj, chave_pix, 
-                    data_competencia, carimbo, observacao, conta, categoria, 
-                    grupo_id, fornecedor_novo, uuid, id_solicitante
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                data["data_lancamento"], 
-                data["solicitante"], 
-                data["titular"], 
-                data["referente"],
-                valor_centavos, 
-                data["obra"], 
-                data["data_pagamento"], 
-                data["forma_pagamento"],
-                valor_lancado,
-                data["cpf_cnpj"], 
-                data["chave_pix"], 
-                data["data_competencia"],
-                data["observacao"],
-                data.get("conta"),
-                data.get("categoria"),
-                None,  # grupo_id = NULL para lançamento simples
-                data.get("fornecedor_novo", 0),
-                solicitante_uuid,
-                solicitante_id
-            ))
-            conn.commit()
-            formulario_id = cursor.lastrowid
-            print(f"✅ LANÇAMENTO SIMPLES — ID {formulario_id}", file=sys.stderr, flush=True)
+            print(f"✅ MÚLTIPLO LANÇAMENTO COMPLETO — ID={formulario_id}, {len(obras_adicionais)-1} obras adicionais em formulario_obras", file=sys.stderr, flush=True)
+        
+        # COMMIT atômico — tudo ou nada
+        conn.commit()
+        
     except Exception as e:
         conn.rollback()
         print(f"❌ Erro ao criar formulário: {e}", file=sys.stderr, flush=True)
@@ -660,16 +695,55 @@ def atualizar_formulario(form_id):
             set_clauses.append(f"{campo} = %s")
             valores.append(data[campo])
 
-    if not set_clauses:
+    if not set_clauses and "obras_adicionais" not in data:
         return jsonify({"error": "Nenhum campo para atualizar"}), 400
-
-    query = f"UPDATE formulario SET {', '.join(set_clauses)} WHERE id = %s"
-    valores.append(form_id)
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(query, tuple(valores))
-    conn.commit()
+    
+    try:
+        # 1. Atualizar campos do formulario (se houver)
+        if set_clauses:
+            query = f"UPDATE formulario SET {', '.join(set_clauses)} WHERE id = %s"
+            valores.append(form_id)
+            cursor.execute(query, tuple(valores))
+        
+        # 2. Atualizar formulario_obras (se houver obras_adicionais no payload)
+        if "obras_adicionais" in data:
+            obras_adicionais = data["obras_adicionais"]
+            if isinstance(obras_adicionais, list):
+                # Limpar obras antigas
+                cursor.execute("DELETE FROM formulario_obras WHERE formulario_id = %s", (form_id,))
+                print(f"[PUT] Limpou formulario_obras para ID={form_id}", file=sys.stderr, flush=True)
+                
+                # Re-inserir obras adicionais (pular a primeira que é a obra principal)
+                for idx, obra_info in enumerate(obras_adicionais[1:] if len(obras_adicionais) > 1 else [], 2):
+                    obra_id = obra_info.get("obra_id") or obra_info.get("obra")
+                    valor = obra_info.get("valor", 0)
+                    
+                    if isinstance(valor, str):
+                        valor_limpo = valor.replace("R$", "").replace(".", "").replace(",", ".").strip()
+                        valor = float(valor_limpo) if valor_limpo else 0
+                    else:
+                        valor = float(valor) if valor else 0
+                    
+                    valor_centavos = int(round(valor))
+                    
+                    if valor_centavos > 0 and obra_id:
+                        cursor.execute("""
+                            INSERT INTO formulario_obras (formulario_id, obra_id, valor)
+                            VALUES (%s, %s, %s)
+                        """, (form_id, obra_id, valor_centavos))
+                        print(f"   [{idx}] formulario_obras: obra={obra_id}, valor={valor_centavos}", file=sys.stderr, flush=True)
+        
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Erro ao atualizar formulário {form_id}: {e}", file=sys.stderr, flush=True)
+        cursor.close()
+        conn.close()
+        return jsonify({"error": f"Erro ao atualizar: {str(e)}"}), 500
+    
     cursor.close()
     conn.close()
 
@@ -688,7 +762,7 @@ def deletar_formulario(form_id):
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # 1. Ler o grupo_id do registro
+        # Verificar se o registro existe
         cursor.execute("SELECT id, grupo_id FROM formulario WHERE id = %s", (form_id,))
         registro = cursor.fetchone()
         
@@ -699,20 +773,20 @@ def deletar_formulario(form_id):
         
         grupo_id = registro.get("grupo_id")
         
-        # 2. Deletar: se tem grupo, deleta todo o grupo; senão, só o registro
+        # LEGADO: Se tem grupo_id (formato antigo), deleta todo o grupo
         if grupo_id:
-            # Pegar IDs antes de deletar (para retornar ao frontend)
             cursor.execute("SELECT id FROM formulario WHERE grupo_id = %s", (grupo_id,))
             ids_deletados = [r["id"] for r in cursor.fetchall()]
             
             cursor.execute("DELETE FROM formulario WHERE grupo_id = %s", (grupo_id,))
             total_deletados = cursor.rowcount
-            print(f"🗑️ DELETE grupo_id={grupo_id}: {total_deletados} registros removidos (IDs: {ids_deletados})", file=sys.stderr, flush=True)
+            print(f"🗑️ DELETE LEGADO grupo_id={grupo_id}: {total_deletados} registros removidos (IDs: {ids_deletados})", file=sys.stderr, flush=True)
         else:
+            # NOVO FORMATO: Deleta só o registro (CASCADE cuida de formulario_obras)
             cursor.execute("DELETE FROM formulario WHERE id = %s", (form_id,))
             total_deletados = cursor.rowcount
             ids_deletados = [form_id]
-            print(f"🗑️ DELETE simples ID={form_id}: {total_deletados} registro removido", file=sys.stderr, flush=True)
+            print(f"🗑️ DELETE ID={form_id}: {total_deletados} registro removido (formulario_obras limpo por CASCADE)", file=sys.stderr, flush=True)
         
         conn.commit()
         
