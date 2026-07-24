@@ -36,7 +36,7 @@ def buscar_titulares():
         LIMIT 10
     """
     
-    search_term = query + "%"
+    search_term = f"%{query}%"
     
     try:
         cursor.execute(sql_query, (search_term,))
